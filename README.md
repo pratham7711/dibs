@@ -2,7 +2,7 @@
 
 ## Try it
 
-Open the one-tab demo at [https://dibs.onrender.com](https://dibs.onrender.com) and click **▶ Run rehearsal**. Render's free web service sleeps when idle, so its first load can take about 30 seconds.
+Open the one-tab demo at [https://dibs-at23.onrender.com](https://dibs-at23.onrender.com) and click **▶ Run rehearsal**. Render's free web service sleeps when idle, so its first load can take about 30 seconds.
 
 Dibs runs fair, first come drops for Twitch chat. It recognizes clear claims, orders them by Twitch's message timestamp, keeps unclear requests in a streamer review queue, and promotes waitlisted viewers when a winner cancels.
 
