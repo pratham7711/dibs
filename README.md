@@ -56,3 +56,5 @@ npx tsc --noEmit
 - **Step 6:** One-tab hosted demo, isolated rehearsal rooms, public request limits, proxy-safe SSE, and process-wide model decision caching.
 - **Step 7:** Ranked, name-bearing chat summaries; threaded `!spot` replies; throttled public status answers; and a timed sold-out announcement.
 - **Step 8:** Grapheme-safe dashboard avatars, a standalone neon OBS stage, and a live practice crowd that competes in the allocator without exposing fictional names in Twitch chat.
+- **Step 9:** Transparent overlay iframe on `/stage`, keeping the arena visible behind the race card.
+- **Step 10:** Public room redirects preserve existing query parameters, including stage overlay position.

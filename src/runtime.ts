@@ -772,7 +772,10 @@ async function routeRequest(
     !url.searchParams.has("room")
   ) {
     const roomId = options.roomRegistry!.createId();
-    response.writeHead(302, { Location: `${url.pathname}?room=${roomId}` });
+    url.searchParams.set("room", roomId);
+    response.writeHead(302, {
+      Location: `${url.pathname}?${url.searchParams}`,
+    });
     response.end();
     return;
   }

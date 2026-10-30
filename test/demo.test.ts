@@ -54,6 +54,24 @@ describe("public demo safety and room state", () => {
     expect(state.snapshot.drop.title).toContain("Rehearsal ready");
   });
 
+  it("preserves stage query parameters when adding a room", async () => {
+    const registry = new DemoRoomRegistry(
+      () => new DibsRuntime({ mode: "rehearsal", env: {} }),
+    );
+    const baseUrl = await listenPublic({
+      publicDemo: true,
+      roomRegistry: registry,
+    });
+    const redirect = await fetch(`${baseUrl}/stage?overlay=br`, {
+      redirect: "manual",
+    });
+    expect(redirect.status).toBe(302);
+    const location = new URL(redirect.headers.get("location")!, baseUrl);
+    expect(location.pathname).toBe("/stage");
+    expect(location.searchParams.get("overlay")).toBe("br");
+    expect(location.searchParams.get("room")).toMatch(/^[a-f0-9]{16}$/);
+  });
+
   it("isolates each room's rehearsal state", async () => {
     const registry = new DemoRoomRegistry(
       () => new DibsRuntime({ mode: "rehearsal", env: {} }),
