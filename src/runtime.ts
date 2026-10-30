@@ -17,6 +17,12 @@ import type { ReplyAction } from "./twitch/chat.js";
 import { TwitchEventSub } from "./twitch/eventsub.js";
 import type { TwitchNotification } from "./twitch/eventsub.js";
 import { DemoRoomRegistry, IpRateLimiter, firstForwardedIp } from "./demo.js";
+import {
+  classifyChatQuery,
+  publicStatusLine,
+  spotReplyForViewer,
+  StatusReplyThrottle,
+} from "./twitch/chat-queries.js";
 
 export interface RuntimeOptions {
   auth?: TwitchAuth;
@@ -77,6 +83,10 @@ export class DibsRuntime {
   private twitchConnected = false;
   private readonly now: () => number;
   private tokenValidationTimer: ReturnType<typeof setInterval> | undefined;
+  private firstClaimAt: number | undefined;
+  private soldOutAt: number | undefined;
+  private soldOutAnnounced = false;
+  private readonly statusReplyThrottle = new StatusReplyThrottle();
 
   constructor(private readonly options: RuntimeOptions = {}) {
     this.env = options.env ?? process.env;
@@ -85,6 +95,7 @@ export class DibsRuntime {
       options.auth ?? new TwitchAuth({ env: this.env, fetch: this.fetcher });
     this.mode = options.mode ?? "live";
     this.now = options.now ?? Date.now;
+    if (this.mode === "rehearsal") this.chat = this.createRehearsalChat();
   }
 
   get snapshot(): Allocation {
@@ -104,7 +115,11 @@ export class DibsRuntime {
   }
 
   setMode(mode: "live" | "rehearsal"): void {
+    if (this.mode === mode) return;
+    this.chat?.close();
     this.mode = mode;
+    if (mode === "rehearsal") this.chat = this.createRehearsalChat();
+    else delete this.chat;
     this.publish();
   }
 
@@ -210,6 +225,10 @@ export class DibsRuntime {
         ? {}
         : { subsFirstSeconds: input.subsFirstSeconds }),
     };
+    this.firstClaimAt = undefined;
+    this.soldOutAt = undefined;
+    this.soldOutAnnounced = false;
+    this.statusReplyThrottle.reset(drop.id);
     this.resolver =
       this.options.resolverFactory?.(drop) ?? new ResolverPipeline(drop);
     this.events.length = 0;
@@ -227,9 +246,27 @@ export class DibsRuntime {
   }
 
   async handleNotification(notification: TwitchNotification): Promise<void> {
+    const { event } = notification;
+    if (notification.type === "channel.chat.message") {
+      const text = String(event.message?.text ?? "");
+      const viewerId = String(event.chatter_user_id ?? "");
+      const query = classifyChatQuery(text);
+      if (query && viewerId) {
+        this.handleChatQuery(
+          query,
+          text,
+          viewerId,
+          notification.messageId,
+          String(
+            event.chatter_user_name ?? event.chatter_user_login ?? "Viewer",
+          ),
+          notification.timestamp,
+        );
+        return;
+      }
+    }
     if (!this.state.drop || this.state.drop.status !== "open" || !this.resolver)
       return;
-    const { event } = notification;
     if (
       notification.type ===
       "channel.channel_points_custom_reward_redemption.add"
@@ -416,10 +453,88 @@ export class DibsRuntime {
     this.publish();
   }
 
+  private handleChatQuery(
+    kind: "spot" | "status",
+    text: string,
+    viewerId: string,
+    parentMessageId: string,
+    display: string,
+    twitchTimestamp: number,
+  ): void {
+    const at = this.now();
+    this.addActivity({
+      id: parentMessageId,
+      messageId: parentMessageId,
+      viewerId,
+      display,
+      text,
+      timestamp: this.mode === "rehearsal" ? at : twitchTimestamp,
+      source: "rules",
+      action: "question",
+      why:
+        kind === "spot"
+          ? "Viewer asked for their claim status."
+          : "Viewer asked for drop status.",
+    });
+    if (kind === "spot") {
+      this.chat?.enqueueDirect({
+        message: spotReplyForViewer(this.state, viewerId),
+        parentMessageId,
+      });
+      return;
+    }
+
+    const dropId = this.state.drop?.id;
+    if (!this.statusReplyThrottle.canSend(dropId, at)) return;
+    const message = publicStatusLine(
+      this.state,
+      this.firstClaimAt,
+      this.soldOutAt,
+      at,
+    );
+    if (this.chat?.enqueueStatus({ message }))
+      this.statusReplyThrottle.markSent(dropId, at);
+  }
+
+  private createRehearsalChat(): TwitchChatReplies {
+    return new TwitchChatReplies({
+      clientId: "rehearsal",
+      broadcasterId: "rehearsal",
+      senderId: "rehearsal",
+      getAccessToken: async () => "",
+      minimumIntervalMs: 0,
+      onSend: (message) => this.recordBotLine(message),
+    });
+  }
+
+  private recordBotLine(message: string): void {
+    this.addActivity({
+      id: `bot-${crypto.randomUUID()}`,
+      messageId: "",
+      viewerId: "dibs-bot",
+      display: "🤖 Dibs",
+      text: message,
+      timestamp: this.now(),
+      source: "rules",
+      action: "bot_reply",
+      why: "rehearsal: not sent to Twitch",
+    });
+  }
+
   private apply(event: DropEvent): void {
+    const wasSoldOut = isSoldOut(this.state);
     const previousDecisionCount = this.state.decisionLog.length;
     this.events.push(event);
     this.state = reduceEvent(this.state, event);
+    if (
+      event.type === "ClaimReceived" &&
+      this.firstClaimAt === undefined &&
+      [...this.state.winners, ...this.state.waitlist].some(
+        (claim) => claim.messageId === event.messageId,
+      )
+    ) {
+      this.firstClaimAt = event.at;
+    }
     const newDecisions = this.state.decisionLog.slice(previousDecisionCount);
     for (const decision of newDecisions) {
       const action = replyAction(decision.action);
@@ -427,12 +542,37 @@ export class DibsRuntime {
       const claim = [...this.state.winners, ...this.state.waitlist].find(
         (item) => item.messageId === decision.messageId,
       );
-      if (claim)
+      if (claim) {
+        const position = spotNumber(this.state, claim);
+        const waitingPosition = orderedClaims(this.state.waitlist).findIndex(
+          (item) => item.messageId === claim.messageId,
+        );
         this.chat?.enqueue({
           action,
           display: claim.display,
           parentMessageId: claim.messageId,
+          ...(action === "waitlisted"
+            ? { waitlistNumber: waitingPosition + 1 }
+            : {
+                ...(position === undefined ? {} : { spotNumber: position }),
+                ...(this.state.drop
+                  ? { spotsTotal: this.state.drop.spots }
+                  : {}),
+              }),
         });
+      }
+    }
+    if (!wasSoldOut && isSoldOut(this.state) && !this.soldOutAnnounced) {
+      this.soldOutAnnounced = true;
+      this.soldOutAt = event.at;
+      this.chat?.enqueueAnnouncement(
+        publicStatusLine(
+          this.state,
+          this.firstClaimAt,
+          this.soldOutAt,
+          event.at,
+        ),
+      );
     }
     this.options.onState?.(this.state);
     this.publish();
@@ -514,9 +654,34 @@ export class DibsRuntime {
 function replyAction(action: string): ReplyAction | undefined {
   if (action === "granted" || action === "granted_by_timestamp")
     return "granted";
-  if (action === "waitlisted") return "waitlisted";
+  if (action === "waitlisted" || action === "displaced_to_waitlist")
+    return "waitlisted";
   if (action === "promoted") return "promoted";
   return undefined;
+}
+
+function orderedClaims(claims: Allocation["winners"]): Allocation["winners"] {
+  return [...claims].sort((a, b) => a.twitchTimestamp - b.twitchTimestamp);
+}
+
+function spotNumber(
+  state: Allocation,
+  target: Allocation["winners"][number],
+): number | undefined {
+  let position = 1;
+  for (const claim of orderedClaims(state.winners)) {
+    if (claim.messageId === target.messageId) return position;
+    position += claim.qty;
+  }
+  return undefined;
+}
+
+function isSoldOut(state: Allocation): boolean {
+  return Boolean(
+    state.drop &&
+    state.winners.reduce((total, claim) => total + claim.qty, 0) >=
+      state.drop.spots,
+  );
 }
 
 export interface HttpServerOptions {

@@ -48,6 +48,13 @@ const crowd: ScriptMessage[] = [
     points: true,
   },
   {
+    atMs: 1000,
+    id: "spot-query",
+    viewer: "Oak",
+    text: "!spot",
+    timestampOffsetMs: 2000,
+  },
+  {
     atMs: 1450,
     id: "trap-free",
     viewer: "Pine",

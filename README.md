@@ -50,3 +50,4 @@ npx tsc --noEmit
 - **Step 4:** OBS race overlay, streamer dashboard, and initial rehearsal mode.
 - **Step 5:** Replayable 32-second choreography, timestamp fairness and promotion visuals, Channel Points rehearsal claim, documentation, and polish.
 - **Step 6:** One-tab hosted demo, isolated rehearsal rooms, public request limits, proxy-safe SSE, and process-wide model decision caching.
+- **Step 7:** Ranked, name-bearing chat summaries; threaded `!spot` replies; throttled public status answers; and a timed sold-out announcement.

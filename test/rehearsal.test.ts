@@ -76,6 +76,11 @@ describe("rehearsal crowd", () => {
         ?.action,
     ).toBe("question");
     expect(
+      runtime.view.feed.find((item) => item.text === "!spot")?.action,
+    ).toBe("question");
+    expect(runtime.snapshot.seenMessageIds).not.toContain("spot-query");
+    expect(runtime.snapshot.seenMessageIds).not.toContain("trap-who");
+    expect(
       runtime.snapshot.winners.find(
         (claim) => claim.source === "channel_points",
       )?.display,

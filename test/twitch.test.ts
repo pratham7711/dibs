@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
 import { TwitchAuth } from "../src/twitch/auth.js";
-import { TwitchChatReplies } from "../src/twitch/chat.js";
+import { summarizeBatch, TwitchChatReplies } from "../src/twitch/chat.js";
 import {
   parseEventSubTimestamp,
   TwitchEventSub,
@@ -140,8 +140,113 @@ describe("Twitch chat replies", () => {
 
     expect(fetcher).toHaveBeenCalledOnce();
     const request = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
-    expect(request.message).toBe("Dibs update: 30 claimed.");
+    expect(request.message).toContain("✅ #1 @Viewer0");
+    expect(request.message).toContain("#30 @Viewer29");
+    expect(request.message.length).toBeLessThanOrEqual(500);
     expect(request.reply_parent_message_id).toBe("message-0");
+    chat.close();
+  });
+
+  it("formats named winners and waitlist entries", () => {
+    expect(
+      summarizeBatch([
+        {
+          action: "granted",
+          display: "EarlyBird",
+          parentMessageId: "1",
+          spotNumber: 1,
+        },
+        {
+          action: "granted",
+          display: "Oak",
+          parentMessageId: "2",
+          spotNumber: 2,
+        },
+        {
+          action: "granted",
+          display: "Tix",
+          parentMessageId: "3",
+          spotNumber: 3,
+        },
+        {
+          action: "waitlisted",
+          display: "Moss",
+          parentMessageId: "4",
+          waitlistNumber: 1,
+        },
+        {
+          action: "waitlisted",
+          display: "Wren",
+          parentMessageId: "5",
+          waitlistNumber: 2,
+        },
+      ]),
+    ).toBe("✅ #1 @EarlyBird · #2 @Oak · #3 @Tix · ⏳ waitlist: @Moss, @Wren");
+  });
+
+  it("keeps a long batch within Twitch's limit and reports omitted names", () => {
+    const message = summarizeBatch(
+      Array.from({ length: 80 }, (_, index) => ({
+        action: "granted" as const,
+        display: `LongViewerName${index}`,
+        parentMessageId: `message-${index}`,
+        spotNumber: index + 1,
+      })),
+    );
+    expect(message.length).toBeLessThanOrEqual(500);
+    expect(message).toMatch(/\+\d+ more$/);
+  });
+
+  it("keeps a single decision as a threaded reply", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ data: [] }));
+    const chat = new TwitchChatReplies({
+      clientId: "client",
+      broadcasterId: "broadcaster",
+      senderId: "bot",
+      getAccessToken: async () => "token",
+      fetch: fetcher,
+      minimumIntervalMs: 0,
+      batchWindowMs: 0,
+    });
+    chat.enqueue({
+      action: "granted",
+      display: "Oak",
+      parentMessageId: "claim-oak",
+      spotNumber: 2,
+      spotsTotal: 5,
+    });
+    await chat.flush();
+    const request = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
+    expect(request.message).toBe("✅ @Oak — you're #2 of 5!");
+    expect(request.reply_parent_message_id).toBe("claim-oak");
+    chat.close();
+  });
+
+  it("drops a pending public status line when a claim reply backs up", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ data: [] }));
+    const chat = new TwitchChatReplies({
+      clientId: "client",
+      broadcasterId: "broadcaster",
+      senderId: "bot",
+      getAccessToken: async () => "token",
+      fetch: fetcher,
+      minimumIntervalMs: 0,
+      batchWindowMs: 0,
+    });
+    expect(chat.enqueueStatus({ message: "2 of 5 left, say dibs" })).toBe(true);
+    chat.enqueue({
+      action: "granted",
+      display: "Oak",
+      parentMessageId: "claim-oak",
+    });
+    await chat.flush();
+    const request = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
+    expect(request.message).toContain("@Oak");
+    expect(request.message).not.toContain("2 of 5 left");
     chat.close();
   });
 });
@@ -228,7 +333,13 @@ describe("Dibs runtime", () => {
     const auth = {
       getAccessToken: async () => "token",
     } as unknown as TwitchAuth;
-    const fakeChat = { enqueue: vi.fn(), close: vi.fn() };
+    const fakeChat = {
+      enqueue: vi.fn(),
+      enqueueAnnouncement: vi.fn(),
+      enqueueDirect: vi.fn(),
+      enqueueStatus: vi.fn(() => true),
+      close: vi.fn(),
+    };
     const runtime = new DibsRuntime({
       auth,
       env: { TWITCH_CLIENT_ID: "client", TWITCH_CHANNEL: "streamer" },
