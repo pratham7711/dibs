@@ -3,6 +3,7 @@
 }
 html,
 body {
+  color-scheme: dark;
   width: 100%;
   height: 100%;
   margin: 0;
@@ -105,6 +106,8 @@ iframe {
   height: 720px;
   border: 0;
   pointer-events: none;
+  background: transparent !important;
+  color-scheme: dark;
 }
 iframe.br {
   right: 30px;

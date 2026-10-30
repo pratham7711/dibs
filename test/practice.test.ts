@@ -107,7 +107,7 @@ describe("practice crowd safeguards", () => {
     expect(runtime.snapshot.winners[1]?.practice).toBe(true);
   });
 
-  it("serves the standalone stage page", async () => {
+  it("serves a stage with an explicitly transparent overlay frame", async () => {
     const runtime = new DibsRuntime({ mode: "rehearsal", env: {} });
     const server = createDibsHttpServer(runtime);
     await new Promise<void>((resolve) =>
@@ -119,7 +119,22 @@ describe("practice crowd safeguards", () => {
         throw new Error("Missing HTTP address");
       const response = await fetch(`http://127.0.0.1:${address.port}/stage`);
       expect(response.status).toBe(200);
-      expect(await response.text()).toContain("Dibs — OBS Stage");
+      const markup = await response.text();
+      expect(markup).toContain("Dibs — OBS Stage");
+      expect(markup).toContain('id="overlay"');
+      const stageCss = await fetch(
+        `http://127.0.0.1:${address.port}/stage.css`,
+      ).then((r) => r.text());
+      const overlayCss = await fetch(
+        `http://127.0.0.1:${address.port}/overlay.css`,
+      ).then((r) => r.text());
+      expect(stageCss).toMatch(
+        /iframe\s*\{[^}]*background:\s*transparent\s*!important/s,
+      );
+      expect(stageCss).toMatch(/iframe\s*\{[^}]*color-scheme:\s*dark/s);
+      expect(overlayCss).toMatch(
+        /html,\s*body\s*\{[^}]*background-color:\s*transparent\s*!important/s,
+      );
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

@@ -1,5 +1,6 @@
 :root {
   color-scheme: dark;
+  background-color: transparent !important;
   font-family:
     Inter,
     ui-sans-serif,
@@ -26,7 +27,7 @@ body {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: transparent;
+  background-color: transparent !important;
   color: var(--ink);
 }
 body {
