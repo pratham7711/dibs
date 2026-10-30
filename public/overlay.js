@@ -15,14 +15,20 @@ const elements = {
   waitNames: document.querySelector("#waitlist-names"),
   reviewCount: document.querySelector("#review-count"),
   soldOut: document.querySelector("#sold-out"),
+  soldOutBadge: document.querySelector("#sold-out-badge"),
+  fairFlash: document.querySelector("#fair-flash"),
   countdown: document.querySelector("#subs-countdown"),
   countdownValue: document.querySelector("#countdown-value"),
   ring: document.querySelector("#ring-progress"),
 };
 let previousWaitlist = new Set();
 let ringTimer;
+let soldOutTimer;
+let soldOutDropId;
+let lastDropStatus;
 
 function sourceLabel(claim) {
+  if (claim.source === "channel_points") return "🎟 points";
   if (claim.resolverSource === "model") return "🧠 gpt-oss";
   if (claim.resolverSource === "review") return "👀 review";
   return "⚡ rules";
@@ -137,7 +143,38 @@ function render(view) {
     rowIndex += 1;
   }
   const total = winners.reduce((count, claim) => count + claim.qty, 0);
-  elements.soldOut.hidden = !drop || total < drop.spots;
+  const isSoldOut = Boolean(drop && total >= drop.spots);
+  const newDrop = soldOutDropId !== drop?.id;
+  const finalClose =
+    isSoldOut && drop?.status === "closed" && lastDropStatus !== "closed";
+  if (!isSoldOut || newDrop) {
+    clearTimeout(soldOutTimer);
+    soldOutDropId = isSoldOut ? drop.id : undefined;
+    elements.soldOut.hidden = true;
+    elements.soldOutBadge.hidden = true;
+  }
+  if (
+    isSoldOut &&
+    ((elements.soldOut.hidden && elements.soldOutBadge.hidden) || finalClose)
+  ) {
+    clearTimeout(soldOutTimer);
+    elements.soldOut.hidden = false;
+    elements.soldOutBadge.hidden = true;
+    soldOutTimer = setTimeout(() => {
+      elements.soldOut.hidden = true;
+      elements.soldOutBadge.hidden = false;
+    }, 2500);
+  }
+  if (!isSoldOut) {
+    elements.soldOut.hidden = true;
+    elements.soldOutBadge.hidden = true;
+  }
+  lastDropStatus = drop?.status;
+  const fairDecision = [...(state.decisionLog ?? [])]
+    .reverse()
+    .find((decision) => decision.action === "granted_by_timestamp");
+  elements.fairFlash.hidden =
+    !fairDecision || Date.now() - fairDecision.at >= 2400;
   const latestBump = [...(state.decisionLog ?? [])]
     .reverse()
     .find((decision) => decision.action === "displaced_to_waitlist");

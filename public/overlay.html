@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Dibs Overlay</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/overlay.css" />
   </head>
   <body class="pos-br">
@@ -12,7 +13,12 @@
       <header class="card-header">
         <div class="brand-mark">D</div>
         <div class="header-copy">
-          <div class="eyebrow">LIVE DROP <span id="live-dot"></span></div>
+          <div class="eyebrow">
+            LIVE DROP <span id="live-dot"></span
+            ><span id="sold-out-badge" class="sold-out-badge" hidden
+              >SOLD OUT</span
+            >
+          </div>
           <h1 id="drop-title">Waiting for a drop</h1>
           <p id="drop-subtitle">
             The race starts when the streamer opens spots.
@@ -35,6 +41,9 @@
       <section class="race-section">
         <div class="section-label">
           <span>THE RACE</span><span id="spot-count">0 / 0</span>
+        </div>
+        <div id="fair-flash" class="fair-flash" hidden>
+          ⚖ FAIR · EARLIER TIMESTAMP
         </div>
         <div id="spot-rows" class="spot-rows"></div>
         <div id="sold-out" class="sold-out" hidden>SOLD OUT</div>

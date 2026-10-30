@@ -82,12 +82,15 @@ export function classifyMessage(input: string): Resolution {
       "Explicit first-person request with quantity.",
     );
   }
-  if (/^slot\s*\d+(?:\s+pls| please)?$/.test(s))
+  if (/^(?:slot\s*#?\s*\d+|#\s*\d+)(?:\s+pls| please)?$/.test(s))
+    return result("claim", 1, 0.96, "Explicit request for a numbered spot.");
+  const bareNumberRequest = s.match(/^(\d+)\s*(?:pls|please)$/);
+  if (bareNumberRequest)
     return result(
       "claim",
-      1,
-      0.66,
-      "Could name a preferred slot rather than request a spot; review intent.",
+      Number(bareNumberRequest[1]),
+      0.94,
+      "Explicit quantity request.",
     );
   if (
     /^(dibs|!dibs|me|mine|i'm in|im in|i am in|i'll take it|ill take it|put me down|mujhe chahiye|mujhe ek chahiye|mera|le lunga|🙋|🙋‍♀️|🙋‍♂️|✋|\+1)$/.test(

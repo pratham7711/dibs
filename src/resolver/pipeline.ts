@@ -37,7 +37,7 @@ interface PendingMessage {
 }
 
 const FIRST_PERSON_CLAIM_CUE =
-  /\b(?:i|i'm|im|i am|me|mine|dibs|!dibs|mujhe|mere liye|mera|le lunga)\b|🙋|✋|\+1/i;
+  /\b(?:i|i'm|im|i am|me|mine|dibs|!dibs|mujhe|mere liye|mera|le lunga|slot\s*#?\s*\d+)\b|#\s*\d+|\b\d+\s*(?:pls|please)\b|🙋|✋|\+1/i;
 const REQUEST_SIGNAL =
   /\b(?:get(?:ting)?|have|save|saving|keep|keeping|hold|holding|reserve|reserving)\b.{0,50}\b(?:one|it|that|ek)\b|\b(?:one|ek)\b.{0,50}\b(?:for me|for my|mere liye|rakhna|rakh do|chahiye)\b|\b(?:can|could|may)\s+i\b|\bfor (?:me|my)\b|\b(?:i want|mere liye|rakhna|rakh do|chahiye)\b/i;
 const PROXY_REQUEST =
@@ -131,8 +131,10 @@ function isClearNonClaim(result: Resolution, text: string): boolean {
 }
 
 function fallbackResult(message: ModelMessage, why: string): ResolvedMessage {
+  const hasFirstPersonCue = FIRST_PERSON_CLAIM_CUE.test(message.text);
   const needsClaimReview =
-    REQUEST_SIGNAL.test(message.text) || PROXY_REQUEST.test(message.text);
+    PROXY_REQUEST.test(message.text) ||
+    (hasFirstPersonCue && REQUEST_SIGNAL.test(message.text));
   return {
     id: message.id,
     intent: needsClaimReview ? "claim" : message.ruleResult.intent,

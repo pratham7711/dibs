@@ -767,3 +767,7 @@ h2 {
     gap: 7px;
   }
 }
+
+[hidden] {
+  display: none !important;
+}

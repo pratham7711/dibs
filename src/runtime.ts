@@ -562,7 +562,13 @@ async function routeRequest(
     "/dashboard": "dashboard.html",
     "/dashboard.css": "dashboard.css",
     "/dashboard.js": "dashboard.js",
+    "/favicon.svg": "favicon.svg",
   };
+  if (request.method === "GET" && url.pathname === "/favicon.ico") {
+    response.writeHead(204);
+    response.end();
+    return;
+  }
   if (request.method === "GET" && staticFiles[url.pathname]) {
     await sendStatic(response, staticFiles[url.pathname]!);
     return;
@@ -680,6 +686,7 @@ async function sendStatic(
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
+    ".svg": "image/svg+xml",
   };
   const content = await readFile(join(process.cwd(), "public", filename));
   const extension = filename.slice(filename.lastIndexOf("."));

@@ -27,12 +27,28 @@ describe("rehearsal crowd", () => {
     expect(runtime.snapshot.winners.map((claim) => claim.display)).toEqual([
       "EarlyBird",
       "Oak",
+      "Tix",
       "Robin",
-      "Moss",
-      "Finch",
+      "Pebble",
     ]);
-    expect(runtime.snapshot.waitlist).toHaveLength(10);
-    expect(runtime.snapshot.reviewQueue).toHaveLength(4);
+    expect(runtime.snapshot.waitlist.map((claim) => claim.display)).toEqual([
+      "Moss",
+      "Wren",
+      "Cloud",
+      "Noodle",
+      "Teammate",
+      "Daisy",
+      "Orbit",
+      "Fern",
+      "Poppy",
+      "Mochi",
+      "Bubbles",
+      "Lime",
+    ]);
+    expect(runtime.snapshot.reviewQueue.map((claim) => claim.display)).toEqual([
+      "Bhai",
+      "Comet",
+    ]);
     expect(
       runtime.snapshot.decisionLog.every((item) => item.why.length <= 90),
     ).toBe(true);
@@ -44,6 +60,45 @@ describe("rehearsal crowd", () => {
     expect(
       runtime.snapshot.decisionLog.filter((item) => item.action === "promoted"),
     ).toHaveLength(2);
+    expect(
+      runtime.snapshot.decisionLog.some(
+        (item) =>
+          item.action === "granted_by_timestamp" &&
+          item.viewerId === "rehearsal-EarlyBird",
+      ),
+    ).toBe(true);
+    expect(
+      runtime.snapshot.decisionLog.find((item) => item.action === "promoted")
+        ?.viewerId,
+    ).toBe("rehearsal-Robin");
+    expect(
+      runtime.view.feed.find((item) => item.text === "can anyone get one?")
+        ?.action,
+    ).toBe("question");
+    expect(
+      runtime.snapshot.winners.find(
+        (claim) => claim.source === "channel_points",
+      )?.display,
+    ).toBe("Tix");
     expect(runtime.view.mode).toBe("rehearsal");
+    expect(runtime.snapshot.drop?.status).toBe("closed");
+    expect(
+      runtime.snapshot.decisionLog.some(
+        (item) =>
+          item.action === "approval_waitlisted" &&
+          item.viewerId === "rehearsal-Teammate",
+      ),
+    ).toBe(true);
+    for (const text of [
+      "is it free?",
+      "who got it?",
+      "can anyone get one?",
+      "I don't want it",
+    ]) {
+      expect(runtime.view.feed.some((item) => item.text === text)).toBe(true);
+      expect(
+        runtime.snapshot.winners.some((claim) => claim.display === text),
+      ).toBe(false);
+    }
   });
 });

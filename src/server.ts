@@ -6,6 +6,7 @@ export interface ServerStartOptions {
   port?: number;
   rehearsalMode?: boolean;
   rehearsalSleep?: (milliseconds: number) => Promise<void>;
+  autoRunRehearsal?: boolean;
 }
 
 export async function startServer(options: ServerStartOptions = {}) {
@@ -17,6 +18,12 @@ export async function startServer(options: ServerStartOptions = {}) {
   const runtime = new DibsRuntime({
     mode: rehearsalOnly ? "rehearsal" : "live",
   });
+  if (rehearsalOnly) {
+    runtime.openDrop({
+      title: "Rehearsal ready — press Run rehearsal",
+      spots: 5,
+    });
+  }
   if (!rehearsalOnly) await runtime.start();
 
   let rehearsalRunning = false;
@@ -41,9 +48,9 @@ export async function startServer(options: ServerStartOptions = {}) {
   console.log(`Dibs dashboard is listening on http://localhost:${actualPort}`);
   if (rehearsalOnly) {
     console.log(
-      "No Twitch credentials configured. Starting a clearly labeled rehearsal drop.",
+      "No Twitch credentials configured. Rehearsal is ready; click Run rehearsal to start the 32-second crowd.",
     );
-    launchRehearsal();
+    if (options.autoRunRehearsal) launchRehearsal();
   }
   return { server, runtime, port: actualPort };
 }
