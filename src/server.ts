@@ -1,12 +1,14 @@
 import "dotenv/config";
 import { DibsRuntime, createDibsHttpServer } from "./runtime.js";
 import { runRehearsal } from "./rehearsal.js";
+import { DemoRoomRegistry } from "./demo.js";
 
 export interface ServerStartOptions {
   port?: number;
   rehearsalMode?: boolean;
   rehearsalSleep?: (milliseconds: number) => Promise<void>;
   autoRunRehearsal?: boolean;
+  publicDemo?: boolean;
 }
 
 export async function startServer(options: ServerStartOptions = {}) {
@@ -14,32 +16,41 @@ export async function startServer(options: ServerStartOptions = {}) {
   const hasTwitchConfiguration = Boolean(
     process.env.TWITCH_CLIENT_ID && process.env.TWITCH_CHANNEL,
   );
-  const rehearsalOnly = options.rehearsalMode || !hasTwitchConfiguration;
-  const runtime = new DibsRuntime({
-    mode: rehearsalOnly ? "rehearsal" : "live",
-  });
-  if (rehearsalOnly) {
-    runtime.openDrop({
+  const publicDemo = options.publicDemo ?? process.env.DIBS_PUBLIC_DEMO === "1";
+  const rehearsalOnly =
+    publicDemo || options.rehearsalMode || !hasTwitchConfiguration;
+  const makeRehearsalRuntime = () => {
+    const roomRuntime = new DibsRuntime({ mode: "rehearsal" });
+    roomRuntime.openDrop({
       title: "Rehearsal ready — press Run rehearsal",
       spots: 5,
     });
-  }
+    return roomRuntime;
+  };
+  const runtime = rehearsalOnly
+    ? makeRehearsalRuntime()
+    : new DibsRuntime({ mode: "live" });
+  const roomRegistry = publicDemo
+    ? new DemoRoomRegistry(makeRehearsalRuntime)
+    : undefined;
   if (!rehearsalOnly) await runtime.start();
 
-  let rehearsalRunning = false;
-  const launchRehearsal = () => {
-    if (rehearsalRunning) return;
-    rehearsalRunning = true;
-    runtime.stop();
+  const runningRooms = new WeakSet<DibsRuntime>();
+  const launchRehearsal = (target: DibsRuntime = runtime) => {
+    if (runningRooms.has(target)) return;
+    runningRooms.add(target);
+    target.stop();
     void runRehearsal(
-      runtime,
+      target,
       options.rehearsalSleep ? { sleep: options.rehearsalSleep } : {},
     ).finally(() => {
-      rehearsalRunning = false;
+      runningRooms.delete(target);
     });
   };
   const server = createDibsHttpServer(runtime, {
     onRehearsalStart: launchRehearsal,
+    publicDemo,
+    ...(roomRegistry ? { roomRegistry } : {}),
   });
   await new Promise<void>((resolve) => server.listen(port, resolve));
   const address = server.address();
@@ -50,7 +61,7 @@ export async function startServer(options: ServerStartOptions = {}) {
     console.log(
       "No Twitch credentials configured. Rehearsal is ready; click Run rehearsal to start the 32-second crowd.",
     );
-    if (options.autoRunRehearsal) launchRehearsal();
+    if (options.autoRunRehearsal && !publicDemo) launchRehearsal();
   }
   return { server, runtime, port: actualPort };
 }

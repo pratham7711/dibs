@@ -1,5 +1,9 @@
+import { isPromotedRow } from "./overlay-helpers.js";
+
 const body = document.body;
 const params = new URLSearchParams(location.search);
+const room = params.get("room");
+const roomQuery = room ? `?room=${encodeURIComponent(room)}` : "";
 body.classList.remove("pos-br");
 body.classList.add(
   `pos-${["br", "bl", "tr", "tl"].includes(params.get("pos")) ? params.get("pos") : "br"}`,
@@ -40,7 +44,7 @@ function safeColor(color) {
 
 function makeSpot(index, claim, previous, promotedViewerId) {
   const row = document.createElement("div");
-  const isPromoted = claim?.viewerId === promotedViewerId;
+  const isPromoted = isPromotedRow(claim, promotedViewerId);
   row.className = `spot-row${claim ? " filled" : ""}${isPromoted ? " promoted" : ""}`;
   const number = document.createElement("span");
   number.className = "spot-number";
@@ -206,9 +210,9 @@ function render(view) {
   if (drop && state.openedAt) startCountdown(drop, state.openedAt);
 }
 
-fetch("/api/state")
+fetch(`/api/state${roomQuery}`)
   .then((response) => response.json())
   .then(render)
   .catch(() => {});
-const stream = new EventSource("/events");
+const stream = new EventSource(`/events${roomQuery}`);
 stream.onmessage = (event) => render(JSON.parse(event.data));

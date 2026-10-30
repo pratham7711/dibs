@@ -1,5 +1,9 @@
 # Dibs
 
+## Try it
+
+Open the one-tab demo at [https://dibs.onrender.com](https://dibs.onrender.com) and click **▶ Run rehearsal**. Render's free web service sleeps when idle, so its first load can take about 30 seconds.
+
 Dibs runs fair, first come drops for Twitch chat. It recognizes clear claims, orders them by Twitch's message timestamp, keeps unclear requests in a streamer review queue, and promotes waitlisted viewers when a winner cancels.
 
 ## Rehearse in 60 seconds
@@ -44,4 +48,5 @@ npx tsc --noEmit
 - **Step 2:** Readable formatted code, ambiguity model fallback, batching, validation, and token budget guard.
 - **Step 3:** Twitch Device Code auth, EventSub, chat replies, HTTP endpoints, and SSE state stream.
 - **Step 4:** OBS race overlay, streamer dashboard, and initial rehearsal mode.
-- **Step 5:** Replayable 35-second choreography, timestamp fairness and promotion visuals, Channel Points rehearsal claim, documentation, and polish.
+- **Step 5:** Replayable 32-second choreography, timestamp fairness and promotion visuals, Channel Points rehearsal claim, documentation, and polish.
+- **Step 6:** One-tab hosted demo, isolated rehearsal rooms, public request limits, proxy-safe SSE, and process-wide model decision caching.

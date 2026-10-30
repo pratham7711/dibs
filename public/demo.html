@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101114" />
+    <title>Dibs — Live Drop Demo</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/demo.css" />
+  </head>
+  <body>
+    <header class="demo-header">
+      <a class="brand" href="/"
+        ><span>D</span><b>DIBS<small>LIVE DROP DEMO</small></b></a
+      >
+      <div class="demo-label"><i></i> PRIVATE REHEARSAL ROOM</div>
+      <button id="run-rehearsal" class="run-button">▶ Run rehearsal</button>
+    </header>
+    <main class="demo-layout">
+      <section class="stream-column">
+        <div class="stream-topline">
+          <span><i></i> LIVE PREVIEW</span><span>COMMUNITY DUO QUEUE</span>
+        </div>
+        <div class="stream-frame">
+          <div class="game-scene" aria-label="Abstract animated game scene">
+            <div class="scene-grid"></div>
+            <div class="orb orb-a"></div>
+            <div class="orb orb-b"></div>
+            <div class="orb orb-c"></div>
+            <div class="scene-caption">
+              <span>NEON ARENA</span><b>ROUND 04 <i>·</i> COMMUNITY MATCH</b>
+            </div>
+          </div>
+          <iframe
+            id="overlay-frame"
+            title="Live Dibs overlay"
+            loading="eager"
+          ></iframe>
+          <div class="frame-corner">1920 × 1080 · OBS PREVIEW</div>
+        </div>
+        <div class="stream-note">
+          <span class="pulse"></span> Each claim is timestamped. Late arrivals
+          can still win inside the settle window.
+        </div>
+      </section>
+      <section class="control-column">
+        <div class="control-heading">
+          <span>STREAMER VIEW</span><b>THE CONTROL ROOM</b>
+        </div>
+        <iframe id="dashboard-frame" title="Dibs streamer dashboard"></iframe>
+      </section>
+    </main>
+    <footer>
+      Every name is fictional. Rehearsal messages never reach Twitch chat.
+    </footer>
+    <script type="module" src="/demo.js"></script>
+  </body>
+</html>

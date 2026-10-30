@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Drop } from "../src/core/types.js";
-import { ModelClient } from "../src/resolver/model.js";
+import { ModelClient, resetModelState } from "../src/resolver/model.js";
 import type { ModelDecision } from "../src/resolver/model.js";
 import {
   ResolverPipeline,
@@ -65,9 +65,31 @@ function modelClient(
   });
 }
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  resetModelState();
+});
 
 describe("model client", () => {
+  it("caches successful decisions by exact message text across clients", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(completion([modelDecision("first-cache-id")]));
+    const context = { dropTitle: drop.title, spotsLeft: 3, perViewerLimit: 2 };
+    const first = await modelClient(fetcher).classifyBatch(
+      [ambiguousMessage("first-cache-id", "cache this exact sentence")],
+      context,
+    );
+    const second = await modelClient(fetcher).classifyBatch(
+      [ambiguousMessage("second-cache-id", "cache this exact sentence")],
+      context,
+    );
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(first[0]?.id).toBe("first-cache-id");
+    expect(second[0]).toMatchObject({ id: "second-cache-id", kind: "claim" });
+  });
+
   it("batches messages into one request and includes drop context and schema", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
@@ -210,9 +232,15 @@ describe("model client", () => {
     const client = modelClient(fetcher, { DIBS_LLM_TOKEN_BUDGET: "10" });
     const context = { dropTitle: drop.title, spotsLeft: 3, perViewerLimit: 2 };
 
-    await client.classifyBatch([ambiguousMessage("first")], context);
+    await client.classifyBatch(
+      [ambiguousMessage("first", "budget guard first line")],
+      context,
+    );
     await expect(
-      client.classifyBatch([ambiguousMessage("second")], context),
+      client.classifyBatch(
+        [ambiguousMessage("second", "budget guard second line")],
+        context,
+      ),
     ).rejects.toThrow("token budget");
     expect(fetcher).toHaveBeenCalledTimes(1);
   });

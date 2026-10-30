@@ -4,6 +4,14 @@ export const MODEL_BATCH_WINDOW_MS = 250;
 export const MODEL_TIMEOUT_MS = 2500;
 export const MAX_BATCH_SIZE = 20;
 export const DEFAULT_TOKEN_BUDGET = 200_000;
+const MODEL_DECISION_CACHE_LIMIT = 5_000;
+const modelDecisionCache = new Map<string, Omit<ModelDecision, "id">>();
+const modelTokensByBudget = new Map<number, number>();
+
+export function resetModelState(): void {
+  modelDecisionCache.clear();
+  modelTokensByBudget.clear();
+}
 
 export interface ModelMessage {
   id: string;
@@ -94,7 +102,6 @@ export class ModelClient {
   private readonly env: Record<string, string | undefined>;
   private readonly fetcher: typeof fetch;
   private readonly tokenBudget: number;
-  private tokensUsed = 0;
 
   constructor(options: ModelClientOptions = {}) {
     this.env = options.env ?? process.env;
@@ -109,13 +116,27 @@ export class ModelClient {
   }
 
   get budgetExhausted(): boolean {
-    return this.tokensUsed >= this.tokenBudget;
+    return (modelTokensByBudget.get(this.tokenBudget) ?? 0) >= this.tokenBudget;
   }
 
   async classifyBatch(
     messages: ModelMessage[],
     context: ModelContext,
   ): Promise<ModelDecision[]> {
+    const cachedOrUnique = new Map<string, ModelMessage>();
+    const resolved = new Map<string, Omit<ModelDecision, "id">>();
+    for (const message of messages) {
+      const cached = modelDecisionCache.get(message.text);
+      if (cached) resolved.set(message.id, cached);
+      else if (!cachedOrUnique.has(message.text))
+        cachedOrUnique.set(message.text, message);
+    }
+    if (cachedOrUnique.size === 0) {
+      return messages.map((message) => ({
+        id: message.id,
+        ...resolved.get(message.id)!,
+      }));
+    }
     const apiKey = this.env.DIBS_LLM_API_KEY ?? this.env.GROQ_API_KEY;
     if (!apiKey) throw new Error("no model key");
     if (this.budgetExhausted) throw new Error("model token budget exhausted");
@@ -137,7 +158,10 @@ export class ModelClient {
           role: "user",
           content: JSON.stringify({
             drop: context,
-            messages: messages.map(({ id, text }) => ({ id, text })),
+            messages: [...cachedOrUnique.values()].map(({ id, text }) => ({
+              id,
+              text,
+            })),
             output:
               "For each id provide kind (claim/cancel/question/other), qty, confidence 0..1, and one-line reason.",
           }),
@@ -180,9 +204,27 @@ export class ModelClient {
         throw error;
       }
       const data = (await response.json()) as CompletionResponse;
-      this.tokensUsed +=
-        (data.usage?.prompt_tokens ?? 0) + (data.usage?.completion_tokens ?? 0);
-      return parseDecisions(data.choices?.[0]?.message?.content);
+      modelTokensByBudget.set(
+        this.tokenBudget,
+        (modelTokensByBudget.get(this.tokenBudget) ?? 0) +
+          (data.usage?.prompt_tokens ?? 0) +
+          (data.usage?.completion_tokens ?? 0),
+      );
+      const decisions = parseDecisions(data.choices?.[0]?.message?.content);
+      for (const decision of decisions) {
+        const { id, ...value } = decision;
+        const message = [...cachedOrUnique.values()].find(
+          (candidate) => candidate.id === id,
+        );
+        if (!message) continue;
+        cacheModelDecision(message.text, value);
+        resolved.set(id, value);
+      }
+      return messages.flatMap((message) => {
+        const value =
+          resolved.get(message.id) ?? modelDecisionCache.get(message.text);
+        return value ? [{ id: message.id, ...value }] : [];
+      });
     } finally {
       clearTimeout(timeout);
     }
@@ -204,6 +246,20 @@ export class ModelClient {
       signal,
     });
   }
+}
+
+function cacheModelDecision(
+  text: string,
+  decision: Omit<ModelDecision, "id">,
+): void {
+  if (
+    !modelDecisionCache.has(text) &&
+    modelDecisionCache.size >= MODEL_DECISION_CACHE_LIMIT
+  ) {
+    const oldestText = modelDecisionCache.keys().next().value;
+    if (oldestText !== undefined) modelDecisionCache.delete(oldestText);
+  }
+  modelDecisionCache.set(text, decision);
 }
 
 export function failureReason(error: unknown): string {

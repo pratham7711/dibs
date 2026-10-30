@@ -24,11 +24,17 @@ const elements = {
   copy: document.querySelector("#copy-overlay"),
   toast: document.querySelector("#toast"),
 };
+const room = new URLSearchParams(location.search).get("room");
+const roomQuery = room ? `?room=${encodeURIComponent(room)}` : "";
 let currentView;
 let selectedReview = 0;
 let toastTimer;
-const overlayUrl = `${location.origin}/overlay?pos=br`;
+const overlayUrl = `${location.origin}/overlay?pos=br${room ? `&room=${encodeURIComponent(room)}` : ""}`;
 elements.overlayUrl.textContent = overlayUrl;
+document.querySelector("#overlay-link").href =
+  `/overlay?pos=br${room ? `&room=${encodeURIComponent(room)}` : ""}`;
+document.querySelector(".csv-link").href = `/api/drop/winners.csv${roomQuery}`;
+document.querySelector(".wordmark").href = `/dashboard${roomQuery}`;
 
 function toast(message) {
   elements.toast.textContent = message;
@@ -38,11 +44,15 @@ function toast(message) {
 }
 
 async function api(path, body = {}) {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const separator = path.includes("?") ? "&" : "?";
+  const response = await fetch(
+    `${path}${room ? `${separator}room=${encodeURIComponent(room)}` : ""}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
   const data = await response.json();
   if (!response.ok) throw new Error(data.error ?? "Request failed.");
   return data;
@@ -122,6 +132,7 @@ function renderFeed(feed) {
       "time",
       "feed-time",
       new Date(item.timestamp).toLocaleTimeString([], {
+        hour: "2-digit",
         minute: "2-digit",
         second: "2-digit",
       }),
@@ -200,7 +211,7 @@ async function actOnReview(messageId, action) {
   }
 }
 
-function renderRoster(snapshot) {
+function renderRoster(snapshot, rehearsal = false) {
   const winners = [...snapshot.winners].sort(
     (a, b) => a.twitchTimestamp - b.twitchTimestamp,
   );
@@ -220,7 +231,10 @@ function renderRoster(snapshot) {
       node(
         "span",
         "roster-time",
-        new Date(claim.twitchTimestamp).toLocaleTimeString([], {
+        new Date(
+          rehearsal ? claim.receivedAt : claim.twitchTimestamp,
+        ).toLocaleTimeString([], {
+          hour: "2-digit",
           minute: "2-digit",
           second: "2-digit",
         }),
@@ -277,7 +291,7 @@ function render(view) {
   elements.undo.disabled = snapshot.decisionLog.length <= 1;
   renderFeed(view.feed);
   renderReviews(snapshot.reviewQueue);
-  renderRoster(snapshot);
+  renderRoster(snapshot, view.mode === "rehearsal");
 }
 
 elements.form.addEventListener("submit", async (event) => {
@@ -343,9 +357,9 @@ document.addEventListener("keydown", (event) => {
     actOnReview(queue[selectedReview].messageId, "reject");
 });
 
-fetch("/api/state")
+fetch(`/api/state${roomQuery}`)
   .then((response) => response.json())
   .then(render)
   .catch(() => {});
-const stream = new EventSource("/events");
+const stream = new EventSource(`/events${roomQuery}`);
 stream.onmessage = (event) => render(JSON.parse(event.data));

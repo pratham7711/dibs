@@ -16,6 +16,7 @@ import { TwitchChatReplies } from "./twitch/chat.js";
 import type { ReplyAction } from "./twitch/chat.js";
 import { TwitchEventSub } from "./twitch/eventsub.js";
 import type { TwitchNotification } from "./twitch/eventsub.js";
+import { DemoRoomRegistry, IpRateLimiter, firstForwardedIp } from "./demo.js";
 
 export interface RuntimeOptions {
   auth?: TwitchAuth;
@@ -402,7 +403,7 @@ export class DibsRuntime {
       display: input.display,
       text: input.text,
       ...(input.color ? { color: input.color } : {}),
-      timestamp: input.twitchTimestamp,
+      timestamp: this.mode === "rehearsal" ? this.now() : input.twitchTimestamp,
       source: resolution.source,
       action,
       why,
@@ -519,24 +520,45 @@ function replyAction(action: string): ReplyAction | undefined {
 }
 
 export interface HttpServerOptions {
-  onRehearsalStart?: () => void | Promise<void>;
+  onRehearsalStart?: (runtime: DibsRuntime) => void | Promise<void>;
+  publicDemo?: boolean;
+  roomRegistry?: DemoRoomRegistry;
+  ssePingMs?: number;
 }
 
 export function createDibsHttpServer(
   runtime: DibsRuntime,
   options: HttpServerOptions = {},
 ) {
-  const clients = new Set<ServerResponse>();
-  runtime.subscribe((state) => {
-    const payload = `data: ${JSON.stringify(runtime.view)}\n\n`;
-    for (const client of clients) client.write(payload);
-  });
+  const effectiveOptions: HttpServerOptions = options.publicDemo
+    ? {
+        ...options,
+        roomRegistry:
+          options.roomRegistry ??
+          new DemoRoomRegistry(() => {
+            const roomRuntime = new DibsRuntime({ mode: "rehearsal" });
+            roomRuntime.openDrop({
+              title: "Rehearsal ready — press Run rehearsal",
+              spots: 5,
+            });
+            return roomRuntime;
+          }),
+      }
+    : options;
+  const limiter = new IpRateLimiter();
   return createServer(async (request, response) => {
     try {
-      await routeRequest(runtime, clients, request, response, options);
+      await routeRequest(runtime, request, response, effectiveOptions, limiter);
     } catch (error) {
-      sendJson(response, 400, {
-        error: error instanceof Error ? error.message : "Request failed.",
+      const message =
+        error instanceof Error ? error.message : "Request failed.";
+      const status = message.includes("rooms are busy")
+        ? 503
+        : message.includes("Demo room expired")
+          ? 404
+          : 400;
+      sendJson(response, status, {
+        error: message,
       });
     }
   });
@@ -544,24 +566,69 @@ export function createDibsHttpServer(
 
 async function routeRequest(
   runtime: DibsRuntime,
-  clients: Set<ServerResponse>,
   request: IncomingMessage,
   response: ServerResponse,
   options: HttpServerOptions,
+  limiter: IpRateLimiter,
 ): Promise<void> {
   const url = new URL(request.url ?? "/", "http://localhost");
-  if (request.method === "GET" && url.pathname === "/") {
-    response.writeHead(302, { Location: "/dashboard" });
+  if (request.method === "GET" && url.pathname === "/healthz") {
+    response.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end("ok");
+    return;
+  }
+  if (
+    options.publicDemo &&
+    request.method === "GET" &&
+    ["/", "/dashboard", "/overlay"].includes(url.pathname) &&
+    !url.searchParams.has("room")
+  ) {
+    const roomId = options.roomRegistry!.createId();
+    response.writeHead(302, { Location: `${url.pathname}?room=${roomId}` });
     response.end();
+    return;
+  }
+  const requiresRoomState =
+    url.pathname === "/events" || url.pathname.startsWith("/api/");
+  const activeRuntime =
+    options.publicDemo && requiresRoomState
+      ? options.roomRegistry!.get(url.searchParams.get("room") ?? "")
+      : runtime;
+  if (
+    options.publicDemo &&
+    request.method !== "GET" &&
+    request.method !== "HEAD"
+  ) {
+    const forwarded = request.headers["x-forwarded-for"];
+    const ip = firstForwardedIp(
+      Array.isArray(forwarded) ? forwarded[0] : forwarded,
+      request.socket.remoteAddress ?? "unknown",
+    );
+    if (!limiter.allow(ip)) {
+      sendJson(response, 429, {
+        error: "Too many actions. Try again in a minute.",
+      });
+      return;
+    }
+  }
+  if (request.method === "GET" && url.pathname === "/") {
+    if (options.publicDemo) await sendStatic(response, "demo.html");
+    else {
+      response.writeHead(302, { Location: "/dashboard" });
+      response.end();
+    }
     return;
   }
   const staticFiles: Record<string, string> = {
     "/overlay": "overlay.html",
     "/overlay.css": "overlay.css",
     "/overlay.js": "overlay.js",
+    "/overlay-helpers.js": "overlay-helpers.js",
     "/dashboard": "dashboard.html",
     "/dashboard.css": "dashboard.css",
     "/dashboard.js": "dashboard.js",
+    "/demo.css": "demo.css",
+    "/demo.js": "demo.js",
     "/favicon.svg": "favicon.svg",
   };
   if (request.method === "GET" && url.pathname === "/favicon.ico") {
@@ -576,41 +643,68 @@ async function routeRequest(
   if (request.method === "GET" && url.pathname === "/events") {
     response.writeHead(200, {
       "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
       Connection: "keep-alive",
     });
-    clients.add(response);
-    response.write(`data: ${JSON.stringify(runtime.view)}\n\n`);
-    request.on("close", () => clients.delete(response));
+    const sendState = () =>
+      response.write(`data: ${JSON.stringify(activeRuntime.view)}\n\n`);
+    const unsubscribe = activeRuntime.subscribe(sendState);
+    const ping = setInterval(() => {
+      const roomId = url.searchParams.get("room");
+      if (roomId) options.roomRegistry?.touch(roomId);
+      response.write(": ping\n\n");
+    }, options.ssePingMs ?? 15_000);
+    ping.unref?.();
+    sendState();
+    response.on("close", () => {
+      clearInterval(ping);
+      unsubscribe();
+    });
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/drop/winners.csv") {
-    sendCsv(response, runtime.snapshot);
+    sendCsv(response, activeRuntime.snapshot);
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/state") {
-    sendJson(response, 200, runtime.view);
+    sendJson(response, 200, activeRuntime.view);
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/drop") {
-    sendJson(response, 200, runtime.snapshot);
+    sendJson(response, 200, activeRuntime.snapshot);
     return;
   }
   if (request.method === "POST" && url.pathname === "/api/drop") {
     const body = await readJson(request);
+    if (
+      options.publicDemo &&
+      (typeof body.title !== "string" ||
+        body.title.trim().length > 60 ||
+        !Number.isInteger(body.spots) ||
+        Number(body.spots) < 1 ||
+        Number(body.spots) > 20)
+    ) {
+      sendJson(response, 400, {
+        error: "Public drops need a title up to 60 characters and 1–20 spots.",
+      });
+      return;
+    }
     sendJson(
       response,
       201,
-      runtime.openDrop(body as Partial<Drop> & Pick<Drop, "title" | "spots">),
+      activeRuntime.openDrop(
+        body as Partial<Drop> & Pick<Drop, "title" | "spots">,
+      ),
     );
     return;
   }
   if (request.method === "POST" && url.pathname === "/api/drop/close") {
-    sendJson(response, 200, runtime.closeDrop());
+    sendJson(response, 200, activeRuntime.closeDrop());
     return;
   }
   if (request.method === "POST" && url.pathname === "/api/drop/undo") {
-    sendJson(response, 200, runtime.undoLastDecision());
+    sendJson(response, 200, activeRuntime.undoLastDecision());
     return;
   }
   if (request.method === "POST" && url.pathname === "/api/rehearsal/start") {
@@ -620,7 +714,7 @@ async function routeRequest(
       });
       return;
     }
-    await options.onRehearsalStart();
+    await options.onRehearsalStart(activeRuntime);
     sendJson(response, 202, { started: true });
     return;
   }
@@ -632,8 +726,8 @@ async function routeRequest(
     const body = await readJson(request);
     const state =
       reviewMatch[2] === "approve"
-        ? runtime.approveClaim(claimId, body.qty as number | undefined)
-        : runtime.rejectClaim(claimId);
+        ? activeRuntime.approveClaim(claimId, body.qty as number | undefined)
+        : activeRuntime.rejectClaim(claimId);
     sendJson(response, 200, state);
     return;
   }
@@ -642,7 +736,7 @@ async function routeRequest(
     sendJson(
       response,
       200,
-      runtime.cancelClaim(decodeURIComponent(cancelMatch[1]!)),
+      activeRuntime.cancelClaim(decodeURIComponent(cancelMatch[1]!)),
     );
     return;
   }
