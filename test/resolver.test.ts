@@ -1,6 +1,65 @@
-import { describe, expect, it } from 'vitest';
-import { classifyMessage } from '../src/resolver/rules.js';
-const cases: [string,string,number?][] = [
- ['dibs','claim'],['!dibs','claim'],['me','claim'],['me!!','claim'],['mine','claim'],["I'll take it",'claim'],['put me down','claim'],['put me down for 2','claim'],['2 please','claim'],["I'll take 2",'claim'],['slot 3','claim'],['slot 3 pls','claim'],['mujhe chahiye','claim'],['mujhe ek chahiye','claim'],['mera','claim'],['le lunga','claim'],['🙋','claim'],['🙋‍♀️','claim'],['🙋‍♂️','claim'],['✋','claim'],['+1','claim'],["I'm in",'claim'],['im in','claim'],['I am in','claim'],['one please','claim'],['three','claim'],['cancel','cancel'],['nvm','cancel'],['never mind','cancel'],['cancel mine','cancel'],['drop me','cancel'],['nahi chahiye','cancel'],['is it free?','question'],['who got it?','question'],['can anyone get one?','question'],['did ava get it','question'],['he wants one','other'],['me when the drop ends lol','question'],["I don't want it",'other'],['I wanted one','other'],['she wants one','other'],['can I get one?','claim'],['could I get one','claim'],['hello chat','other'],['lol','other'],['🔥','other'],['maybe me?','question'],['give me two','claim']
+import { describe, expect, it } from "vitest";
+import { classifyMessage } from "../src/resolver/rules.js";
+const cases: [string, string, number?][] = [
+  ["dibs", "claim"],
+  ["!dibs", "claim"],
+  ["me", "claim"],
+  ["me!!", "claim"],
+  ["mine", "claim"],
+  ["I'll take it", "claim"],
+  ["put me down", "claim"],
+  ["put me down for 2", "claim"],
+  ["2 please", "claim"],
+  ["I'll take 2", "claim"],
+  ["slot 3", "claim"],
+  ["slot 3 pls", "claim"],
+  ["mujhe chahiye", "claim"],
+  ["mujhe ek chahiye", "claim"],
+  ["mera", "claim"],
+  ["le lunga", "claim"],
+  ["🙋", "claim"],
+  ["🙋‍♀️", "claim"],
+  ["🙋‍♂️", "claim"],
+  ["✋", "claim"],
+  ["+1", "claim"],
+  ["I'm in", "claim"],
+  ["im in", "claim"],
+  ["I am in", "claim"],
+  ["one please", "claim"],
+  ["three", "claim"],
+  ["cancel", "cancel"],
+  ["nvm", "cancel"],
+  ["never mind", "cancel"],
+  ["cancel mine", "cancel"],
+  ["drop me", "cancel"],
+  ["nahi chahiye", "cancel"],
+  ["is it free?", "question"],
+  ["who got it?", "question"],
+  ["can anyone get one?", "question"],
+  ["did ava get it", "question"],
+  ["he wants one", "other"],
+  ["me when the drop ends lol", "question"],
+  ["I don't want it", "other"],
+  ["I wanted one", "other"],
+  ["she wants one", "other"],
+  ["can I get one?", "claim"],
+  ["could I get one", "claim"],
+  ["hello chat", "other"],
+  ["lol", "other"],
+  ["🔥", "other"],
+  ["maybe me?", "question"],
+  ["give me two", "claim"],
 ];
-describe('classifyMessage',()=> { it.each(cases)('%s → %s', (text,intent)=> { expect(classifyMessage(text).intent).toBe(intent); }); it('uses high confidence only for clear claims',()=> { expect(classifyMessage('dibs').confidence).toBeGreaterThanOrEqual(.85); expect(classifyMessage('can I get one?').confidence).toBeLessThan(.85); }); it('extracts quantity',()=> { expect(classifyMessage('put me down for 2').qty).toBe(2); expect(classifyMessage('2 please').qty).toBe(2); }); });
+describe("classifyMessage", () => {
+  it.each(cases)("%s → %s", (text, intent) => {
+    expect(classifyMessage(text).intent).toBe(intent);
+  });
+  it("uses high confidence only for clear claims", () => {
+    expect(classifyMessage("dibs").confidence).toBeGreaterThanOrEqual(0.85);
+    expect(classifyMessage("can I get one?").confidence).toBeLessThan(0.85);
+  });
+  it("extracts quantity", () => {
+    expect(classifyMessage("put me down for 2").qty).toBe(2);
+    expect(classifyMessage("2 please").qty).toBe(2);
+  });
+});
