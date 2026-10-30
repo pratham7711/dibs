@@ -36,9 +36,11 @@ interface PendingMessage {
 }
 
 const FIRST_PERSON_CLAIM_CUE =
-  /\b(?:i|i'm|im|i am|me|mine|dibs|!dibs|mujhe|mera|le lunga)\b|🙋|✋|\+1/i;
-const CLAIM_INTENT_CUE =
-  /\b(?:dibs|mine|i(?:'ll| will)? take|put me down|i want|give me|mujhe|mera|le lunga|slot\s*\d+|\d+\s+(?:please|pls))\b|🙋|✋|\+1/i;
+  /\b(?:i|i'm|im|i am|me|mine|dibs|!dibs|mujhe|mere liye|mera|le lunga)\b|🙋|✋|\+1/i;
+const REQUEST_SIGNAL =
+  /\b(?:get(?:ting)?|have|save|saving|keep|keeping|hold|holding|reserve|reserving)\b.{0,50}\b(?:one|it|that|ek)\b|\b(?:one|ek)\b.{0,50}\b(?:for me|for my|mere liye|rakhna|rakh do|chahiye)\b|\b(?:can|could|may)\s+i\b|\bfor (?:me|my)\b|\b(?:i want|mere liye|rakhna|rakh do|chahiye)\b/i;
+const PROXY_REQUEST =
+  /\b(?:for (?:my|a|the) (?:brother|sister|friend|mom|mother|dad|father|sibling|partner|wife|husband|cousin|buddy|teammate|colleague|coworker|son|daughter|kid|grandma|grandpa|someone else)|for someone else|on behalf of|my (?:brother|sister|friend|mom|mother|dad|father|sibling|partner|wife|husband|cousin))\b/i;
 
 export function validateModelDecision(
   message: ModelMessage,
@@ -47,12 +49,23 @@ export function validateModelDecision(
 ): ResolvedMessage {
   const isClaim = decision.kind === "claim";
   const hasFirstPersonCue = FIRST_PERSON_CLAIM_CUE.test(message.text);
+  const proxyRequest = PROXY_REQUEST.test(message.text);
   let confidence = clamp(decision.confidence, 0, 1);
   let why = decision.reason.trim() || "Classified by the ambiguity model.";
   let source: DecisionSource = confidence >= 0.8 ? "model" : "review";
 
   // A model cannot promote a message with no first-person claim cue into an automatic grant.
-  if (isClaim && !hasFirstPersonCue) {
+  const ambiguousFirstPersonRequest =
+    hasFirstPersonCue && REQUEST_SIGNAL.test(message.text) && !isClaim;
+  if (proxyRequest) {
+    confidence = Math.min(confidence, 0.6);
+    source = "review";
+    why = `${why} Needs review: this request is for another person.`;
+  } else if (ambiguousFirstPersonRequest) {
+    confidence = Math.min(confidence, 0.6);
+    source = "review";
+    why = `${why} Needs review: this may be a first-person request.`;
+  } else if (isClaim && !hasFirstPersonCue) {
     confidence = Math.min(confidence, 0.6);
     source = "review";
     why = `${why} Needs review: no first-person claim cue.`;
@@ -61,7 +74,12 @@ export function validateModelDecision(
     why = `${why} Needs streamer review because confidence is below 0.8.`;
   }
 
-  const intent = isClaim && !hasFirstPersonCue ? "claim" : decision.kind;
+  const intent =
+    proxyRequest ||
+    ambiguousFirstPersonRequest ||
+    (isClaim && !hasFirstPersonCue)
+      ? "claim"
+      : decision.kind;
   return {
     id: message.id,
     intent,
@@ -101,15 +119,21 @@ function toResolvedRule(
 function isClearNonClaim(result: Resolution, text: string): boolean {
   return (
     (result.intent === "question" || result.intent === "other") &&
-    !CLAIM_INTENT_CUE.test(text)
+    !REQUEST_SIGNAL.test(text)
   );
 }
 
 function fallbackResult(message: ModelMessage, why: string): ResolvedMessage {
+  const needsClaimReview =
+    REQUEST_SIGNAL.test(message.text) || PROXY_REQUEST.test(message.text);
   return {
     id: message.id,
-    intent: message.ruleResult.intent,
-    qty: message.ruleResult.intent === "claim" ? message.ruleResult.qty : 0,
+    intent: needsClaimReview ? "claim" : message.ruleResult.intent,
+    qty: needsClaimReview
+      ? Math.max(1, message.ruleResult.qty)
+      : message.ruleResult.intent === "claim"
+        ? message.ruleResult.qty
+        : 0,
     confidence: Math.min(message.ruleResult.confidence, 0.6),
     source: "review",
     reason: why,
@@ -135,8 +159,12 @@ export class ResolverPipeline {
 
   resolve(input: ResolverInput): Promise<ResolvedMessage> {
     const ruleResult = classifyMessage(input.text);
-    if (ruleResult.confidence >= 0.85)
+    if (
+      ruleResult.confidence >= 0.85 &&
+      (ruleResult.intent === "claim" || ruleResult.intent === "cancel")
+    ) {
       return Promise.resolve(toResolvedRule(input, ruleResult));
+    }
     if (isClearNonClaim(ruleResult, input.text)) {
       return Promise.resolve(toResolvedRule(input, ruleResult));
     }

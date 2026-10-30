@@ -25,15 +25,28 @@ export interface Claim {
 export type DropEvent =
   | { type: "DropOpened"; at: number; drop: Drop }
   | ({ type: "ClaimReceived"; at: number } & Claim)
-  | { type: "ClaimCancelled"; at: number; viewerId: string; reason?: string }
+  | {
+      type: "ClaimCancelled";
+      at: number;
+      viewerId: string;
+      messageId?: string;
+      reason?: string;
+    }
   | {
       type: "ClaimApproved";
       at: number;
       viewerId: string;
+      messageId?: string;
       qty?: number;
       reason?: string;
     }
-  | { type: "ClaimRejected"; at: number; viewerId: string; reason?: string }
+  | {
+      type: "ClaimRejected";
+      at: number;
+      viewerId: string;
+      messageId?: string;
+      reason?: string;
+    }
   | { type: "DropClosed"; at: number; reason?: string };
 export interface Decision {
   at: number;
@@ -44,6 +57,7 @@ export interface Decision {
 }
 export interface Allocation {
   drop?: Drop;
+  openedAt?: number;
   winners: Claim[];
   waitlist: Claim[];
   reviewQueue: Claim[];

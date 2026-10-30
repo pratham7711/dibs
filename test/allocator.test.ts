@@ -67,6 +67,15 @@ describe("allocator", () => {
     expect(s.winners[0]?.viewerId).toBe("s");
     expect(s.waitlist[0]?.viewerId).toBe("n");
   });
+
+  it("ends the subscriber-first window relative to drop open time", () => {
+    const d = { ...drop, subsFirstSeconds: 5 };
+    const s = reduceEvents([
+      { ...open, at: 1000, drop: d },
+      claim("after-window", "viewer", 6000, 6000),
+    ]);
+    expect(s.winners.map((item) => item.viewerId)).toEqual(["viewer"]);
+  });
   it("enforces per viewer limit", () => {
     const d = { ...drop, spots: 3, perViewerLimit: 1 };
     const s = reduceEvents([
@@ -121,6 +130,18 @@ describe("allocator", () => {
     const s = events(claim("x", "x", 1, 1, { confidence: 0.6 }));
     expect(s.reviewQueue).toHaveLength(1);
     expect(s.winners).toHaveLength(0);
+  });
+
+  it("removes a rejected claim from the review queue", () => {
+    const pending = claim("pending", "viewer", 1, 1, { confidence: 0.6 });
+    const s = events(pending, {
+      type: "ClaimRejected",
+      at: 2,
+      viewerId: "viewer",
+      messageId: "pending",
+    });
+    expect(s.reviewQueue).toHaveLength(0);
+    expect(s.decisionLog.at(-1)?.action).toBe("removed");
   });
   it("records a reason for every decision", () => {
     const s = events(claim("x", "x", 1));

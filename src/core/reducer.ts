@@ -131,7 +131,7 @@ function handleClaimReceived(
   }
   if (
     state.drop.subsFirstSeconds !== undefined &&
-    event.at < state.drop.subsFirstSeconds * 1000 &&
+    event.at - (state.openedAt ?? 0) < state.drop.subsFirstSeconds * 1000 &&
     !event.isSubscriber
   ) {
     state.waitlist.push(event);
@@ -240,19 +240,23 @@ function handleCancellationOrRejection(
   event: Extract<DropEvent, { type: "ClaimCancelled" | "ClaimRejected" }>,
 ): void {
   const isRejection = event.type === "ClaimRejected";
-  const winner = state.winners.find(
-    (claim) => claim.viewerId === event.viewerId,
-  );
+  const matchesTarget = (claim: Claim) =>
+    claim.viewerId === event.viewerId &&
+    (event.messageId === undefined || claim.messageId === event.messageId);
+  const winner = state.winners.find(matchesTarget);
   if (!winner) {
-    state.waitlist = state.waitlist.filter(
-      (claim) => claim.viewerId !== event.viewerId,
-    );
+    state.waitlist = state.waitlist.filter((claim) => !matchesTarget(claim));
+    if (isRejection) {
+      state.reviewQueue = state.reviewQueue.filter(
+        (claim) => !matchesTarget(claim),
+      );
+    }
     addDecision(
       state,
       event,
       "removed",
       isRejection
-        ? "Streamer rejected the waitlisted claim."
+        ? "Streamer rejected the pending claim."
         : "Viewer cancelled their waitlisted claim.",
     );
     state.perViewerCounts[event.viewerId] = countViewerWinners(
@@ -288,7 +292,9 @@ function handleApproval(
   event: Extract<DropEvent, { type: "ClaimApproved" }>,
 ): void {
   const claim = state.reviewQueue.find(
-    (item) => item.viewerId === event.viewerId,
+    (item) =>
+      item.viewerId === event.viewerId &&
+      (event.messageId === undefined || item.messageId === event.messageId),
   );
   if (!claim) {
     addDecision(
@@ -318,6 +324,10 @@ function handleApproval(
       event.reason ?? "Streamer approved this claim.",
       approvedClaim,
     );
+    state.perViewerCounts[event.viewerId] = countViewerWinners(
+      state,
+      event.viewerId,
+    );
   } else {
     state.waitlist.push(claim);
     state.waitlist.sort(compareClaims);
@@ -338,6 +348,7 @@ export function reduceEvent(
   const state = cloneAllocation(previous);
   if (event.type === "DropOpened") {
     state.drop = { ...event.drop };
+    state.openedAt = event.at;
     addDecision(
       state,
       event,
