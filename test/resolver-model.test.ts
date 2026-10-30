@@ -136,7 +136,7 @@ describe("model client", () => {
 
     await expect(resultPromise).resolves.toMatchObject({
       source: "review",
-      why: "model busy (timed out)",
+      why: "model busy (timed out).",
     });
   });
 
@@ -156,7 +156,7 @@ describe("model client", () => {
     });
     expect(result).toMatchObject({
       source: "review",
-      why: "model busy (rate limited)",
+      why: "model busy (rate limited).",
     });
   });
 
@@ -170,7 +170,7 @@ describe("model client", () => {
       text: "can I get one?",
       viewerId: "a",
     });
-    expect(result).toMatchObject({ source: "review", why: "no model key" });
+    expect(result).toMatchObject({ source: "review", why: "no model key." });
     expect(fetcher).not.toHaveBeenCalled();
   });
 

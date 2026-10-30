@@ -1,3 +1,4 @@
+import { normalizeWhy } from "./why.js";
 import type { Allocation, Claim, Decision, DropEvent } from "./types.js";
 
 export const initialAllocation = (): Allocation => ({
@@ -24,7 +25,7 @@ function addDecision(
   why: string,
   claim?: Claim,
 ): void {
-  const decision: Decision = { at: event.at, action, why };
+  const decision: Decision = { at: event.at, action, why: normalizeWhy(why) };
   if (claim) {
     decision.viewerId = claim.viewerId;
     decision.messageId = claim.messageId;

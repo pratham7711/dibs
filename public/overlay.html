@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dibs Overlay</title>
+    <link rel="stylesheet" href="/overlay.css" />
+  </head>
+  <body class="pos-br">
+    <main class="race-card" aria-live="polite">
+      <div id="rehearsal-ribbon" class="rehearsal-ribbon" hidden>REHEARSAL</div>
+      <header class="card-header">
+        <div class="brand-mark">D</div>
+        <div class="header-copy">
+          <div class="eyebrow">LIVE DROP <span id="live-dot"></span></div>
+          <h1 id="drop-title">Waiting for a drop</h1>
+          <p id="drop-subtitle">
+            The race starts when the streamer opens spots.
+          </p>
+        </div>
+        <div id="subs-countdown" class="countdown" hidden>
+          <svg viewBox="0 0 48 48" aria-hidden="true">
+            <circle class="ring-track" cx="24" cy="24" r="20" />
+            <circle
+              id="ring-progress"
+              class="ring-progress"
+              cx="24"
+              cy="24"
+              r="20"
+            />
+          </svg>
+          <span id="countdown-value">0</span>
+        </div>
+      </header>
+      <section class="race-section">
+        <div class="section-label">
+          <span>THE RACE</span><span id="spot-count">0 / 0</span>
+        </div>
+        <div id="spot-rows" class="spot-rows"></div>
+        <div id="sold-out" class="sold-out" hidden>SOLD OUT</div>
+      </section>
+      <section class="waitlist-section">
+        <div class="section-label">
+          <span>WAITLIST</span><span id="waitlist-count">0 waiting</span>
+        </div>
+        <div id="waitlist-names" class="waitlist-names">
+          <span class="empty-list">Waiting for the next dibs…</span>
+        </div>
+      </section>
+      <footer class="card-footer">
+        <div class="legend">
+          <span><b>⚡</b> rules</span><span><b>🧠</b> gpt-oss</span
+          ><span><b>👀</b> review</span>
+        </div>
+        <div id="review-count" class="review-count">0 in review</div>
+      </footer>
+    </main>
+    <script type="module" src="/overlay.js"></script>
+  </body>
+</html>

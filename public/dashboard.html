@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dibs — Control room</title>
+    <link rel="stylesheet" href="/dashboard.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+    <div id="rehearsal-banner" class="rehearsal-banner" hidden>
+      <span class="pulse"></span> REHEARSAL MODE
+      <span>Fictional crowd replay · no Twitch messages sent</span>
+    </div>
+    <header class="topbar">
+      <a class="wordmark" href="/dashboard"
+        ><span class="mark">D</span
+        ><span>DIBS<small>CONTROL ROOM</small></span></a
+      >
+      <div class="topbar-right">
+        <div id="twitch-status" class="status">
+          <i></i><span>Connecting to Twitch</span>
+        </div>
+        <div id="model-status" class="model-status">
+          MODEL KEY <b>NOT SET</b>
+        </div>
+        <a
+          class="overlay-link"
+          id="overlay-link"
+          href="/overlay?pos=br"
+          target="_blank"
+          >OPEN OVERLAY ↗</a
+        >
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="left-column">
+        <section class="panel launch-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="kicker">DROP CONTROL</span>
+              <h1>Make it count.</h1>
+            </div>
+            <span id="drop-state" class="state-pill">NO ACTIVE DROP</span>
+          </div>
+          <form id="drop-form" class="drop-form">
+            <label class="field title-field"
+              ><span>DROP NAME</span
+              ><input
+                id="title"
+                name="title"
+                maxlength="60"
+                placeholder="e.g. Duo queue with me"
+                required
+            /></label>
+            <div class="form-row">
+              <label class="field"
+                ><span>SPOTS</span
+                ><input
+                  id="spots"
+                  type="number"
+                  min="1"
+                  max="500"
+                  value="5"
+                  required
+              /></label>
+              <label class="field"
+                ><span>PER VIEWER</span
+                ><input
+                  id="limit"
+                  type="number"
+                  min="1"
+                  max="25"
+                  value="1"
+                  required
+              /></label>
+              <label class="field"
+                ><span>SUBS FIRST · SEC</span
+                ><input id="subs" type="number" min="0" max="3600" value="0"
+              /></label>
+            </div>
+            <button id="open-drop" class="button button-primary" type="submit">
+              <span>OPEN THE DROP</span><b>↗</b>
+            </button>
+          </form>
+          <div class="control-footer">
+            <button id="close-drop" class="button button-quiet" disabled>
+              Close drop
+            </button>
+            <button id="undo" class="button button-quiet" disabled>
+              ↶ Undo last decision
+            </button>
+            <button
+              id="start-rehearsal"
+              class="button button-quiet rehearsal-button"
+            >
+              ▶ Run rehearsal
+            </button>
+          </div>
+        </section>
+
+        <section class="panel feed-panel">
+          <div class="panel-heading compact">
+            <div>
+              <span class="kicker">LIVE CHAT</span>
+              <h2>The room, in order.</h2>
+            </div>
+            <span id="feed-count" class="count-label">0 messages</span>
+          </div>
+          <div id="feed" class="feed-list">
+            <div class="empty-state">
+              <span>✳</span><b>Quiet for now.</b>
+              <p>Open a drop and the first dibs will land here.</p>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="right-column">
+        <section class="panel review-panel">
+          <div class="panel-heading compact">
+            <div>
+              <span class="kicker kicker-warm">HUMAN CHECK</span>
+              <h2>
+                Review queue
+                <span id="review-count" class="inline-count">0</span>
+              </h2>
+            </div>
+            <span class="shortcut-hint">J / K TO MOVE</span>
+          </div>
+          <div id="review-list" class="review-list">
+            <div class="empty-state short">
+              <b>Nothing in review.</b>
+              <p>
+                Unclear intent waits here. It never gets a spot automatically.
+              </p>
+            </div>
+          </div>
+          <div class="review-shortcuts">
+            <kbd>A</kbd> approve <kbd>R</kbd> reject <span>selected claim</span>
+          </div>
+        </section>
+
+        <section class="panel roster-panel">
+          <div class="panel-heading compact">
+            <div>
+              <span class="kicker">THE LINEUP</span>
+              <h2>
+                Winners
+                <span id="winner-count" class="inline-count acid">0</span>
+              </h2>
+            </div>
+            <a class="csv-link" href="/api/drop/winners.csv">DOWNLOAD CSV ↓</a>
+          </div>
+          <div id="winner-list" class="roster-list">
+            <div class="empty-roster">No spots claimed yet.</div>
+          </div>
+          <div class="waitlist-heading">
+            <span>WAITLIST</span><span id="waitlist-count">0 in line</span>
+          </div>
+          <div id="dashboard-waitlist" class="dashboard-waitlist">
+            <span class="muted">The line is clear.</span>
+          </div>
+        </section>
+
+        <section class="panel share-panel">
+          <div>
+            <span class="kicker">ON SCREEN</span><b>Race overlay</b>
+            <p>Transparent browser source · 1920 × 1080</p>
+          </div>
+          <div class="copy-row">
+            <code id="overlay-url"></code
+            ><button id="copy-overlay" class="button button-copy">COPY</button>
+          </div>
+        </section>
+      </section>
+    </main>
+    <div id="toast" class="toast" role="status"></div>
+    <script type="module" src="/dashboard.js"></script>
+  </body>
+</html>

@@ -1,7 +1,14 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { reduceEvent, initialAllocation } from "./core/reducer.js";
-import type { Allocation, Drop, DropEvent } from "./core/types.js";
+import type {
+  Allocation,
+  Drop,
+  DropEvent,
+  ResolverSource,
+} from "./core/types.js";
 import { ResolverPipeline } from "./resolver/pipeline.js";
 import type { ResolvedMessage } from "./resolver/pipeline.js";
 import { TwitchAuth } from "./twitch/auth.js";
@@ -28,6 +35,29 @@ export interface RuntimeOptions {
   socketFactory?: ConstructorParameters<
     typeof TwitchEventSub
   >[0]["socketFactory"];
+  mode?: "live" | "rehearsal";
+  now?: () => number;
+}
+
+export interface ActivityItem {
+  id: string;
+  messageId: string;
+  viewerId: string;
+  display: string;
+  text: string;
+  color?: string;
+  timestamp: number;
+  source: ResolverSource;
+  action: string;
+  why: string;
+}
+
+export interface RuntimeView {
+  snapshot: Allocation;
+  feed: ActivityItem[];
+  mode: "live" | "rehearsal";
+  modelConfigured: boolean;
+  twitchConnected: boolean;
 }
 
 export class DibsRuntime {
@@ -38,8 +68,13 @@ export class DibsRuntime {
   private eventSub?: TwitchEventSub;
   private chat?: TwitchChatReplies;
   private resolver?: Pick<ResolverPipeline, "resolve">;
-  private readonly listeners = new Set<(state: Allocation) => void>();
+  private readonly listeners = new Set<(view: RuntimeView) => void>();
   private readonly seenPointsRedemptions = new Set<string>();
+  private readonly events: DropEvent[] = [];
+  private readonly feed: ActivityItem[] = [];
+  private mode: "live" | "rehearsal";
+  private twitchConnected = false;
+  private readonly now: () => number;
   private tokenValidationTimer: ReturnType<typeof setInterval> | undefined;
 
   constructor(private readonly options: RuntimeOptions = {}) {
@@ -47,13 +82,32 @@ export class DibsRuntime {
     this.fetcher = options.fetch ?? fetch;
     this.auth =
       options.auth ?? new TwitchAuth({ env: this.env, fetch: this.fetcher });
+    this.mode = options.mode ?? "live";
+    this.now = options.now ?? Date.now;
   }
 
   get snapshot(): Allocation {
     return this.state;
   }
 
-  subscribe(listener: (state: Allocation) => void): () => void {
+  get view(): RuntimeView {
+    return {
+      snapshot: this.state,
+      feed: [...this.feed],
+      mode: this.mode,
+      modelConfigured: Boolean(
+        this.env.DIBS_LLM_API_KEY ?? this.env.GROQ_API_KEY,
+      ),
+      twitchConnected: this.twitchConnected,
+    };
+  }
+
+  setMode(mode: "live" | "rehearsal"): void {
+    this.mode = mode;
+    this.publish();
+  }
+
+  subscribe(listener: (view: RuntimeView) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
@@ -97,6 +151,10 @@ export class DibsRuntime {
         ? { socketFactory: this.options.socketFactory }
         : {}),
       onNotification: (notification) => this.handleNotification(notification),
+      onConnectionChange: (connected) => {
+        this.twitchConnected = connected;
+        this.publish();
+      },
       onRevocation: (type, status) =>
         console.error(`EventSub ${type} revoked: ${status}`),
       onError: (error) => console.error(error.message),
@@ -153,12 +211,17 @@ export class DibsRuntime {
     };
     this.resolver =
       this.options.resolverFactory?.(drop) ?? new ResolverPipeline(drop);
-    this.apply({ type: "DropOpened", at: Date.now(), drop });
+    this.events.length = 0;
+    this.feed.length = 0;
+    this.events.push({ type: "DropOpened", at: this.now(), drop });
+    this.state = initialAllocation();
+    this.state = reduceEvent(this.state, this.events[0]!);
+    this.publish();
     return this.state;
   }
 
   closeDrop(): Allocation {
-    if (this.state.drop) this.apply({ type: "DropClosed", at: Date.now() });
+    if (this.state.drop) this.apply({ type: "DropClosed", at: this.now() });
     return this.state;
   }
 
@@ -206,6 +269,7 @@ export class DibsRuntime {
       ),
       twitchTimestamp: notification.timestamp,
       source: "chat",
+      ...(typeof event.color === "string" ? { color: event.color } : {}),
     });
   }
 
@@ -216,7 +280,7 @@ export class DibsRuntime {
     if (!claim) throw new Error("Review claim was not found.");
     this.apply({
       type: "ClaimApproved",
-      at: Date.now(),
+      at: this.now(),
       viewerId: claim.viewerId,
       messageId: claim.messageId,
       ...(qty === undefined ? {} : { qty }),
@@ -235,8 +299,9 @@ export class DibsRuntime {
     if (!target) throw new Error("Claim was not found.");
     this.apply({
       type: "ClaimRejected",
-      at: Date.now(),
+      at: this.now(),
       viewerId: target.viewerId,
+      messageId: target.messageId,
     });
     return this.state;
   }
@@ -248,8 +313,9 @@ export class DibsRuntime {
     if (!target) throw new Error("Claim was not found.");
     this.apply({
       type: "ClaimCancelled",
-      at: Date.now(),
+      at: this.now(),
       viewerId: target.viewerId,
+      messageId: target.messageId,
     });
     this.chat?.enqueue({
       action: "cancelled",
@@ -268,6 +334,7 @@ export class DibsRuntime {
     isSubscriber: boolean;
     twitchTimestamp: number;
     source: "chat" | "channel_points";
+    color?: string;
   }): Promise<void> {
     const resolution: ResolvedMessage = await this.resolver!.resolve({
       id: input.id,
@@ -279,46 +346,78 @@ export class DibsRuntime {
           this.state.winners.reduce((total, item) => total + item.qty, 0),
       ),
     });
+    let action = resolution.intent === "claim" ? "ignored" : resolution.intent;
+    let why = resolution.why;
     if (resolution.intent === "cancel") {
       const priorClaim = [...this.state.winners, ...this.state.waitlist].find(
         (claim) => claim.viewerId === input.viewerId,
       );
+      const decisionsBefore = this.state.decisionLog.length;
       this.apply({
         type: "ClaimCancelled",
-        at: Date.now(),
+        at: this.now(),
         viewerId: input.viewerId,
         ...(priorClaim ? { messageId: priorClaim.messageId } : {}),
         reason: resolution.why,
       });
-      if (priorClaim)
+      if (priorClaim) {
         this.chat?.enqueue({
           action: "cancelled",
           display: input.display,
           parentMessageId: input.id,
         });
-      return;
+      }
+      const decision = this.state.decisionLog[decisionsBefore];
+      action = decision?.action ?? "cancelled";
+      why = decision?.why ?? resolution.why;
+    } else if (resolution.intent === "claim") {
+      const decisionsBefore = this.state.decisionLog.length;
+      this.apply({
+        type: "ClaimReceived",
+        at: this.now(),
+        messageId: input.id,
+        viewerId: input.viewerId,
+        login: input.login,
+        display: input.display,
+        isSubscriber: input.isSubscriber,
+        twitchTimestamp: input.twitchTimestamp,
+        receivedAt: this.now(),
+        qty: resolution.qty,
+        source: input.source,
+        resolverSource: resolution.source,
+        ...(input.color ? { chatColor: input.color } : {}),
+        confidence: resolution.confidence,
+        reason: resolution.why,
+      });
+      const decision = this.state.decisionLog
+        .slice(decisionsBefore)
+        .find((item) => item.messageId === input.id);
+      action = decision?.action ?? "ignored";
+      why = decision?.why ?? resolution.why;
     }
-    if (resolution.intent !== "claim") return;
-
-    this.apply({
-      type: "ClaimReceived",
-      at: Date.now(),
+    this.addActivity({
+      id: input.id,
       messageId: input.id,
       viewerId: input.viewerId,
-      login: input.login,
       display: input.display,
-      isSubscriber: input.isSubscriber,
-      twitchTimestamp: input.twitchTimestamp,
-      receivedAt: Date.now(),
-      qty: resolution.qty,
-      source: input.source,
-      confidence: resolution.confidence,
-      reason: resolution.why,
+      text: input.text,
+      ...(input.color ? { color: input.color } : {}),
+      timestamp: input.twitchTimestamp,
+      source: resolution.source,
+      action,
+      why,
     });
+  }
+
+  private addActivity(item: ActivityItem): void {
+    this.feed.push(item);
+    if (this.feed.length > 100) this.feed.shift();
+    this.publish();
   }
 
   private apply(event: DropEvent): void {
     const previousDecisionCount = this.state.decisionLog.length;
+    this.events.push(event);
     this.state = reduceEvent(this.state, event);
     const newDecisions = this.state.decisionLog.slice(previousDecisionCount);
     for (const decision of newDecisions) {
@@ -335,7 +434,33 @@ export class DibsRuntime {
         });
     }
     this.options.onState?.(this.state);
-    for (const listener of this.listeners) listener(this.state);
+    this.publish();
+  }
+
+  undoLastDecision(): Allocation {
+    if (this.events.length <= 1)
+      throw new Error("There is no decision to undo.");
+    const removed = this.events.pop()!;
+    this.state = this.events.reduce(reduceEvent, initialAllocation());
+    this.feed.push({
+      id: `undo-${this.now()}`,
+      messageId: "",
+      viewerId: "",
+      display: "Dibs",
+      text: "Undo last decision",
+      timestamp: this.now(),
+      source: "rules",
+      action: "undone",
+      why: `Undid ${removed.type === "ClaimReceived" ? removed.display : removed.type}.`,
+    });
+    if (this.feed.length > 100) this.feed.shift();
+    this.publish();
+    return this.state;
+  }
+
+  private publish(): void {
+    const view = this.view;
+    for (const listener of this.listeners) listener(view);
   }
 
   private async getUserByLogin(
@@ -393,15 +518,22 @@ function replyAction(action: string): ReplyAction | undefined {
   return undefined;
 }
 
-export function createDibsHttpServer(runtime: DibsRuntime) {
+export interface HttpServerOptions {
+  onRehearsalStart?: () => void | Promise<void>;
+}
+
+export function createDibsHttpServer(
+  runtime: DibsRuntime,
+  options: HttpServerOptions = {},
+) {
   const clients = new Set<ServerResponse>();
   runtime.subscribe((state) => {
-    const payload = `data: ${JSON.stringify(state)}\n\n`;
+    const payload = `data: ${JSON.stringify(runtime.view)}\n\n`;
     for (const client of clients) client.write(payload);
   });
   return createServer(async (request, response) => {
     try {
-      await routeRequest(runtime, clients, request, response);
+      await routeRequest(runtime, clients, request, response, options);
     } catch (error) {
       sendJson(response, 400, {
         error: error instanceof Error ? error.message : "Request failed.",
@@ -415,8 +547,26 @@ async function routeRequest(
   clients: Set<ServerResponse>,
   request: IncomingMessage,
   response: ServerResponse,
+  options: HttpServerOptions,
 ): Promise<void> {
   const url = new URL(request.url ?? "/", "http://localhost");
+  if (request.method === "GET" && url.pathname === "/") {
+    response.writeHead(302, { Location: "/dashboard" });
+    response.end();
+    return;
+  }
+  const staticFiles: Record<string, string> = {
+    "/overlay": "overlay.html",
+    "/overlay.css": "overlay.css",
+    "/overlay.js": "overlay.js",
+    "/dashboard": "dashboard.html",
+    "/dashboard.css": "dashboard.css",
+    "/dashboard.js": "dashboard.js",
+  };
+  if (request.method === "GET" && staticFiles[url.pathname]) {
+    await sendStatic(response, staticFiles[url.pathname]!);
+    return;
+  }
   if (request.method === "GET" && url.pathname === "/events") {
     response.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -424,12 +574,16 @@ async function routeRequest(
       Connection: "keep-alive",
     });
     clients.add(response);
-    response.write(`data: ${JSON.stringify(runtime.snapshot)}\n\n`);
+    response.write(`data: ${JSON.stringify(runtime.view)}\n\n`);
     request.on("close", () => clients.delete(response));
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/drop/winners.csv") {
     sendCsv(response, runtime.snapshot);
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/api/state") {
+    sendJson(response, 200, runtime.view);
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/drop") {
@@ -447,6 +601,21 @@ async function routeRequest(
   }
   if (request.method === "POST" && url.pathname === "/api/drop/close") {
     sendJson(response, 200, runtime.closeDrop());
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/drop/undo") {
+    sendJson(response, 200, runtime.undoLastDecision());
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/rehearsal/start") {
+    if (!options.onRehearsalStart) {
+      sendJson(response, 409, {
+        error: "Rehearsal is unavailable in this server process.",
+      });
+      return;
+    }
+    await options.onRehearsalStart();
+    sendJson(response, 202, { started: true });
     return;
   }
   const reviewMatch = url.pathname.match(
@@ -468,20 +637,6 @@ async function routeRequest(
       response,
       200,
       runtime.cancelClaim(decodeURIComponent(cancelMatch[1]!)),
-    );
-    return;
-  }
-  if (request.method === "GET" && url.pathname === "/overlay") {
-    sendHtml(
-      response,
-      "<main><h1>Dibs live overlay</h1><p>Live drop race view is coming next.</p></main>",
-    );
-    return;
-  }
-  if (request.method === "GET" && url.pathname === "/dashboard") {
-    sendHtml(
-      response,
-      "<main><h1>Dibs dashboard</h1><p>Drop controls are available through the API.</p></main>",
     );
     return;
   }
@@ -517,9 +672,21 @@ function sendJson(
   response.end(JSON.stringify(value));
 }
 
-function sendHtml(response: ServerResponse, content: string): void {
-  response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-  response.end(`<!doctype html><html><body>${content}</body></html>`);
+async function sendStatic(
+  response: ServerResponse,
+  filename: string,
+): Promise<void> {
+  const contentTypes: Record<string, string> = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+  };
+  const content = await readFile(join(process.cwd(), "public", filename));
+  const extension = filename.slice(filename.lastIndexOf("."));
+  response.writeHead(200, {
+    "Content-Type": contentTypes[extension] ?? "application/octet-stream",
+  });
+  response.end(content);
 }
 
 function sendCsv(response: ServerResponse, state: Allocation): void {

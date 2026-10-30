@@ -1,4 +1,5 @@
 import type { Drop } from "../core/types.js";
+import { normalizeWhy } from "../core/why.js";
 import {
   failureReason,
   MAX_BATCH_SIZE,
@@ -51,7 +52,9 @@ export function validateModelDecision(
   const hasFirstPersonCue = FIRST_PERSON_CLAIM_CUE.test(message.text);
   const proxyRequest = PROXY_REQUEST.test(message.text);
   let confidence = clamp(decision.confidence, 0, 1);
-  let why = decision.reason.trim() || "Classified by the ambiguity model.";
+  let why = normalizeWhy(
+    decision.reason || "Classified by the ambiguity model.",
+  );
   let source: DecisionSource = confidence >= 0.8 ? "model" : "review";
 
   // A model cannot promote a message with no first-person claim cue into an automatic grant.
@@ -60,18 +63,21 @@ export function validateModelDecision(
   if (proxyRequest) {
     confidence = Math.min(confidence, 0.6);
     source = "review";
-    why = `${why} Needs review: this request is for another person.`;
+    why = normalizeWhy(why, "Needs review: request is for another person.");
   } else if (ambiguousFirstPersonRequest) {
     confidence = Math.min(confidence, 0.6);
     source = "review";
-    why = `${why} Needs review: this may be a first-person request.`;
+    why = normalizeWhy(
+      why,
+      "Needs review: this may be a first-person request.",
+    );
   } else if (isClaim && !hasFirstPersonCue) {
     confidence = Math.min(confidence, 0.6);
     source = "review";
-    why = `${why} Needs review: no first-person claim cue.`;
+    why = normalizeWhy(why, "Needs review: no first-person claim cue.");
   } else if (isClaim && confidence < 0.8) {
     source = "review";
-    why = `${why} Needs streamer review because confidence is below 0.8.`;
+    why = normalizeWhy(why, "Needs review: confidence is below 0.8.");
   }
 
   const intent =
@@ -92,8 +98,8 @@ export function validateModelDecision(
       : 0,
     confidence,
     source,
-    reason: why,
-    why,
+    reason: normalizeWhy(why),
+    why: normalizeWhy(why),
   };
 }
 
@@ -112,7 +118,8 @@ function toResolvedRule(
     ...result,
     id: input.id,
     source: "rules",
-    why: result.reason,
+    reason: normalizeWhy(result.reason),
+    why: normalizeWhy(result.reason),
   };
 }
 
@@ -136,8 +143,8 @@ function fallbackResult(message: ModelMessage, why: string): ResolvedMessage {
         : 0,
     confidence: Math.min(message.ruleResult.confidence, 0.6),
     source: "review",
-    reason: why,
-    why,
+    reason: normalizeWhy(why),
+    why: normalizeWhy(why),
   };
 }
 

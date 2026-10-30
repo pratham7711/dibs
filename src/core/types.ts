@@ -1,5 +1,6 @@
 export type DropStatus = "open" | "closed";
 export type ClaimSource = "chat" | "channel_points";
+export type ResolverSource = "rules" | "model" | "review";
 export interface Drop {
   id: string;
   title: string;
@@ -19,6 +20,8 @@ export interface Claim {
   receivedAt: number;
   qty: number;
   source: ClaimSource;
+  resolverSource?: ResolverSource;
+  chatColor?: string;
   confidence: number;
   reason: string;
 }

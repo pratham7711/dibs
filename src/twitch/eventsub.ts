@@ -53,6 +53,7 @@ interface EventSubOptions {
   getAccessToken: () => Promise<string>;
   onNotification: (notification: TwitchNotification) => void | Promise<void>;
   onRevocation?: (subscriptionType: string, status: string) => void;
+  onConnectionChange?: (connected: boolean) => void;
   onError?: (error: Error) => void;
   fetch?: typeof fetch;
   socketFactory?: (url: string) => SocketLike;
@@ -119,6 +120,7 @@ export class TwitchEventSub {
     });
     nextSocket.on("close", () => {
       if (this.closed) return;
+      this.options.onConnectionChange?.(false);
       if (nextSocket === this.socket || isReconnect) this.scheduleReconnect();
     });
     nextSocket.on("error", (error) => this.options.onError?.(error));
@@ -141,6 +143,7 @@ export class TwitchEventSub {
     const type = message.metadata.message_type;
 
     if (type === "session_welcome") {
+      this.options.onConnectionChange?.(true);
       if (isReconnect) {
         this.socket = socket;
         oldSocket?.close();

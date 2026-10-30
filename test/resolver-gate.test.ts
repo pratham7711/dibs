@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Drop } from "../src/core/types.js";
+import { normalizeWhy } from "../src/core/why.js";
 import { ModelClient } from "../src/resolver/model.js";
 import type { ModelMessage } from "../src/resolver/model.js";
 import { ResolverPipeline } from "../src/resolver/pipeline.js";
@@ -136,5 +137,18 @@ describe("request fallback safety", () => {
       source: "review",
       confidence: 0.6,
     });
+  });
+});
+
+describe("overlay reason formatting", () => {
+  it("joins review explanations as separate sentences under 90 characters", () => {
+    const why = normalizeWhy(
+      "The model produced a very long explanation about why the viewer may be requesting an item for themselves",
+      "Needs review: this may be a first-person request.",
+    );
+
+    expect(why.length).toBeLessThanOrEqual(90);
+    expect(why).toMatch(/[.!?…] /);
+    expect(why).toContain("Needs review");
   });
 });
