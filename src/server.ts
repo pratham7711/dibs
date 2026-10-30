@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { DibsRuntime, createDibsHttpServer } from "./runtime.js";
-import { runRehearsal } from "./rehearsal.js";
+import { runPracticeCrowd, runRehearsal } from "./rehearsal.js";
 import { DemoRoomRegistry } from "./demo.js";
 
 export interface ServerStartOptions {
@@ -36,6 +36,7 @@ export async function startServer(options: ServerStartOptions = {}) {
   if (!rehearsalOnly) await runtime.start();
 
   const runningRooms = new WeakSet<DibsRuntime>();
+  const runningPractice = new WeakSet<DibsRuntime>();
   const launchRehearsal = (target: DibsRuntime = runtime) => {
     if (runningRooms.has(target)) return;
     runningRooms.add(target);
@@ -47,8 +48,28 @@ export async function startServer(options: ServerStartOptions = {}) {
       runningRooms.delete(target);
     });
   };
+  const launchPractice = (target: DibsRuntime) => {
+    if (
+      rehearsalOnly ||
+      target.view.mode !== "live" ||
+      target.snapshot.drop?.status !== "open" ||
+      runningPractice.has(target)
+    )
+      return false;
+    runningPractice.add(target);
+    target.setPracticeRunning(true);
+    void runPracticeCrowd(
+      target,
+      options.rehearsalSleep ? { sleep: options.rehearsalSleep } : {},
+    ).finally(() => {
+      runningPractice.delete(target);
+      target.setPracticeRunning(false);
+    });
+    return true;
+  };
   const server = createDibsHttpServer(runtime, {
     onRehearsalStart: launchRehearsal,
+    onPracticeStart: launchPractice,
     publicDemo,
     ...(roomRegistry ? { roomRegistry } : {}),
   });

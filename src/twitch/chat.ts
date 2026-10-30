@@ -9,6 +9,7 @@ export interface ChatReplyDecision {
   spotNumber?: number;
   spotsTotal?: number;
   waitlistNumber?: number;
+  practice?: boolean;
 }
 
 export interface ChatReplyText {
@@ -116,8 +117,10 @@ export class TwitchChatReplies {
       const message = batch.length
         ? summarizeBatch(batch)
         : (direct ?? status)!.message;
+      if (!message) return;
       const parentMessageId =
-        batch[0]?.parentMessageId ?? (direct ?? status)?.parentMessageId;
+        batch.find((item) => !item.practice)?.parentMessageId ??
+        (direct ?? status)?.parentMessageId;
       await this.send(message, parentMessageId);
       this.lastSentAt = Date.now();
     } finally {
@@ -205,13 +208,22 @@ function chatRequest(
 }
 
 export function summarizeBatch(batch: ChatReplyDecision[]): string {
-  if (batch.length === 1) return summarizeOne(batch[0]!);
+  if (batch.length === 1) {
+    return batch[0]!.practice ? "+1 practice" : summarizeOne(batch[0]!);
+  }
 
-  const winners = batch.filter(
+  const practiceCount = new Set(
+    batch
+      .filter((item) => item.practice)
+      .map((item) => item.login ?? item.display),
+  ).size;
+  const real = batch.filter((item) => !item.practice);
+  if (!real.length) return practiceCount ? `+${practiceCount} practice` : "";
+  const winners = real.filter(
     (item) => item.action === "granted" || item.action === "promoted",
   );
-  const waitlist = batch.filter((item) => item.action === "waitlisted");
-  const cancelled = batch.filter((item) => item.action === "cancelled");
+  const waitlist = real.filter((item) => item.action === "waitlisted");
+  const cancelled = real.filter((item) => item.action === "cancelled");
   const units: string[] = [];
   winners.forEach((item, index) => {
     const position = item.spotNumber ?? index + 1;
@@ -223,6 +235,7 @@ export function summarizeBatch(batch: ChatReplyDecision[]): string {
   cancelled.forEach((item, index) => {
     units.push(`${index === 0 ? " · ↩ cancelled: " : ", "}@${item.display}`);
   });
+  if (practiceCount) units.push(` · +${practiceCount} practice`);
   return capUnits(
     units.map((unit, index) => (index === 0 ? unit.replace(/^ · /, "") : unit)),
   );

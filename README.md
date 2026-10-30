@@ -35,6 +35,10 @@ Clear claims and cancellations use local rules. Ambiguous messages are batched t
 - `src/runtime.ts` connects the allocator, resolver, Twitch integrations, HTTP API, and SSE updates.
 - `public/` contains the static dashboard and transparent OBS overlay. `src/rehearsal.ts` drives a fictional crowd through the same runtime.
 
+## OBS stage
+
+Add a browser source pointing to `http://localhost:3000/stage?overlay=br`. Use `overlay=bl`, `tr`, or `tl` to move the Dibs card.
+
 ## Checks
 
 ```sh
@@ -51,3 +55,4 @@ npx tsc --noEmit
 - **Step 5:** Replayable 32-second choreography, timestamp fairness and promotion visuals, Channel Points rehearsal claim, documentation, and polish.
 - **Step 6:** One-tab hosted demo, isolated rehearsal rooms, public request limits, proxy-safe SSE, and process-wide model decision caching.
 - **Step 7:** Ranked, name-bearing chat summaries; threaded `!spot` replies; throttled public status answers; and a timed sold-out announcement.
+- **Step 8:** Grapheme-safe dashboard avatars, a standalone neon OBS stage, and a live practice crowd that competes in the allocator without exposing fictional names in Twitch chat.

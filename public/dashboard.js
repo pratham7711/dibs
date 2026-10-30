@@ -1,3 +1,5 @@
+import { firstGrapheme } from "./avatar-helper.js";
+
 const elements = {
   banner: document.querySelector("#rehearsal-banner"),
   twitch: document.querySelector("#twitch-status"),
@@ -11,6 +13,7 @@ const elements = {
   close: document.querySelector("#close-drop"),
   undo: document.querySelector("#undo"),
   rehearsal: document.querySelector("#start-rehearsal"),
+  practice: document.querySelector("#start-practice"),
   dropState: document.querySelector("#drop-state"),
   feed: document.querySelector("#feed"),
   feedCount: document.querySelector("#feed-count"),
@@ -104,7 +107,7 @@ function renderFeed(feed) {
     const avatar = node(
       "div",
       "feed-avatar",
-      item.display.slice(0, 1).toUpperCase(),
+      firstGrapheme(item.display).toUpperCase(),
     );
     if (/^#[0-9a-f]{6}$/i.test(item.color ?? ""))
       avatar.style.background = item.color;
@@ -123,6 +126,7 @@ function renderFeed(feed) {
             : "⚡ rules",
       ),
     );
+    if (item.practice) line.append(node("span", "practice-chip", "PRACTICE"));
     copy.append(
       line,
       node("div", "feed-message", item.text),
@@ -268,6 +272,7 @@ function render(view) {
   currentView = view;
   const snapshot = view.snapshot;
   elements.banner.hidden = view.mode !== "rehearsal";
+  elements.practice.hidden = view.mode !== "live";
   elements.twitch.className = `status${view.mode === "rehearsal" ? " rehearsal" : view.twitchConnected ? " connected" : ""}`;
   elements.twitch.querySelector("span").textContent =
     view.mode === "rehearsal"
@@ -288,6 +293,10 @@ function render(view) {
   elements.dropState.classList.toggle("open", active);
   elements.open.disabled = active;
   elements.close.disabled = !active;
+  elements.practice.disabled = !active || view.practiceRunning;
+  elements.practice.textContent = view.practiceRunning
+    ? "Practice crowd running…"
+    : "➕ Add practice crowd";
   elements.undo.disabled = snapshot.decisionLog.length <= 1;
   renderFeed(view.feed);
   renderReviews(snapshot.reviewQueue);
@@ -330,6 +339,14 @@ elements.rehearsal.addEventListener("click", async () => {
   try {
     await api("/api/rehearsal/start");
     toast("Rehearsal crowd is on its way.");
+  } catch (error) {
+    toast(error.message);
+  }
+});
+elements.practice.addEventListener("click", async () => {
+  try {
+    await api("/api/practice/start");
+    toast("Practice crowd is racing real chat.");
   } catch (error) {
     toast(error.message);
   }

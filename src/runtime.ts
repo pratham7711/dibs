@@ -57,6 +57,7 @@ export interface ActivityItem {
   source: ResolverSource;
   action: string;
   why: string;
+  practice?: boolean;
 }
 
 export interface RuntimeView {
@@ -65,6 +66,7 @@ export interface RuntimeView {
   mode: "live" | "rehearsal";
   modelConfigured: boolean;
   twitchConnected: boolean;
+  practiceRunning: boolean;
 }
 
 export class DibsRuntime {
@@ -81,6 +83,7 @@ export class DibsRuntime {
   private readonly feed: ActivityItem[] = [];
   private mode: "live" | "rehearsal";
   private twitchConnected = false;
+  private practiceRunning = false;
   private readonly now: () => number;
   private tokenValidationTimer: ReturnType<typeof setInterval> | undefined;
   private firstClaimAt: number | undefined;
@@ -111,6 +114,7 @@ export class DibsRuntime {
         this.env.DIBS_LLM_API_KEY ?? this.env.GROQ_API_KEY,
       ),
       twitchConnected: this.twitchConnected,
+      practiceRunning: this.practiceRunning,
     };
   }
 
@@ -120,6 +124,11 @@ export class DibsRuntime {
     this.mode = mode;
     if (mode === "rehearsal") this.chat = this.createRehearsalChat();
     else delete this.chat;
+    this.publish();
+  }
+
+  setPracticeRunning(running: boolean): void {
+    this.practiceRunning = running;
     this.publish();
   }
 
@@ -261,6 +270,7 @@ export class DibsRuntime {
             event.chatter_user_name ?? event.chatter_user_login ?? "Viewer",
           ),
           notification.timestamp,
+          notification.practice === true,
         );
         return;
       }
@@ -283,6 +293,7 @@ export class DibsRuntime {
         isSubscriber: false,
         twitchTimestamp: notification.timestamp,
         source: "channel_points",
+        practice: notification.practice === true,
       });
       return;
     }
@@ -308,6 +319,7 @@ export class DibsRuntime {
       twitchTimestamp: notification.timestamp,
       source: "chat",
       ...(typeof event.color === "string" ? { color: event.color } : {}),
+      practice: notification.practice === true,
     });
   }
 
@@ -359,6 +371,7 @@ export class DibsRuntime {
       action: "cancelled",
       display: target.display,
       parentMessageId: messageId,
+      ...(target.practice ? { practice: true } : {}),
     });
     return this.state;
   }
@@ -373,6 +386,7 @@ export class DibsRuntime {
     twitchTimestamp: number;
     source: "chat" | "channel_points";
     color?: string;
+    practice?: boolean;
   }): Promise<void> {
     const resolution: ResolvedMessage = await this.resolver!.resolve({
       id: input.id,
@@ -397,12 +411,14 @@ export class DibsRuntime {
         viewerId: input.viewerId,
         ...(priorClaim ? { messageId: priorClaim.messageId } : {}),
         reason: resolution.why,
+        ...(input.practice ? { practice: true } : {}),
       });
       if (priorClaim) {
         this.chat?.enqueue({
           action: "cancelled",
           display: input.display,
           parentMessageId: input.id,
+          ...(input.practice ? { practice: true } : {}),
         });
       }
       const decision = this.state.decisionLog[decisionsBefore];
@@ -426,6 +442,7 @@ export class DibsRuntime {
         ...(input.color ? { chatColor: input.color } : {}),
         confidence: resolution.confidence,
         reason: resolution.why,
+        ...(input.practice ? { practice: true } : {}),
       });
       const decision = this.state.decisionLog
         .slice(decisionsBefore)
@@ -444,6 +461,7 @@ export class DibsRuntime {
       source: resolution.source,
       action,
       why,
+      ...(input.practice ? { practice: true } : {}),
     });
   }
 
@@ -460,6 +478,7 @@ export class DibsRuntime {
     parentMessageId: string,
     display: string,
     twitchTimestamp: number,
+    practice = false,
   ): void {
     const at = this.now();
     this.addActivity({
@@ -475,7 +494,9 @@ export class DibsRuntime {
         kind === "spot"
           ? "Viewer asked for their claim status."
           : "Viewer asked for drop status.",
+      ...(practice ? { practice: true } : {}),
     });
+    if (practice) return;
     if (kind === "spot") {
       this.chat?.enqueueDirect({
         message: spotReplyForViewer(this.state, viewerId),
@@ -559,6 +580,7 @@ export class DibsRuntime {
                   ? { spotsTotal: this.state.drop.spots }
                   : {}),
               }),
+          ...(claim.practice ? { practice: true } : {}),
         });
       }
     }
@@ -686,6 +708,7 @@ function isSoldOut(state: Allocation): boolean {
 
 export interface HttpServerOptions {
   onRehearsalStart?: (runtime: DibsRuntime) => void | Promise<void>;
+  onPracticeStart?: (runtime: DibsRuntime) => boolean | Promise<boolean>;
   publicDemo?: boolean;
   roomRegistry?: DemoRoomRegistry;
   ssePingMs?: number;
@@ -745,7 +768,7 @@ async function routeRequest(
   if (
     options.publicDemo &&
     request.method === "GET" &&
-    ["/", "/dashboard", "/overlay"].includes(url.pathname) &&
+    ["/", "/dashboard", "/overlay", "/stage"].includes(url.pathname) &&
     !url.searchParams.has("room")
   ) {
     const roomId = options.roomRegistry!.createId();
@@ -789,6 +812,10 @@ async function routeRequest(
     "/overlay.css": "overlay.css",
     "/overlay.js": "overlay.js",
     "/overlay-helpers.js": "overlay-helpers.js",
+    "/avatar-helper.js": "avatar-helper.js",
+    "/stage": "stage.html",
+    "/stage.css": "stage.css",
+    "/stage.js": "stage.js",
     "/dashboard": "dashboard.html",
     "/dashboard.css": "dashboard.css",
     "/dashboard.js": "dashboard.js",
@@ -880,6 +907,19 @@ async function routeRequest(
       return;
     }
     await options.onRehearsalStart(activeRuntime);
+    sendJson(response, 202, { started: true });
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/practice/start") {
+    if (
+      !options.onPracticeStart ||
+      !(await options.onPracticeStart(activeRuntime))
+    ) {
+      sendJson(response, 409, {
+        error: "Practice crowd is already running or unavailable.",
+      });
+      return;
+    }
     sendJson(response, 202, { started: true });
     return;
   }

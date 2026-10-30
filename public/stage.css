@@ -1,0 +1,144 @@
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #101114;
+}
+.arena {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: radial-gradient(
+    ellipse at 50% 120%,
+    #282b38,
+    #12131a 55%,
+    #0c0d12
+  );
+}
+.grid {
+  position: absolute;
+  inset: -20%;
+  opacity: 0.2;
+  transform: perspective(500px) rotateX(61deg) scale(1.5);
+  background-image:
+    linear-gradient(#8df3ff33 1px, transparent 1px),
+    linear-gradient(90deg, #8df3ff33 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: linear-gradient(transparent, black 35%, black 75%, transparent);
+  animation: drift 18s linear infinite;
+}
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(2px);
+  opacity: 0.85;
+  animation: float 9s ease-in-out infinite alternate;
+}
+.orb-one {
+  width: 32vw;
+  height: 32vw;
+  left: -9vw;
+  top: 18vh;
+  background: radial-gradient(
+    circle at 40% 35%,
+    #dd68ff,
+    #7b3dff66 40%,
+    transparent 72%
+  );
+}
+.orb-two {
+  width: 38vw;
+  height: 38vw;
+  right: -7vw;
+  top: -12vh;
+  background: radial-gradient(
+    circle at 55% 45%,
+    #48e6dc,
+    #236de477 42%,
+    transparent 72%
+  );
+  animation-delay: -3s;
+}
+.orb-three {
+  width: 28vw;
+  height: 28vw;
+  left: 43vw;
+  bottom: -20vw;
+  background: radial-gradient(
+    circle at center,
+    #c7ff5eaa,
+    #8acb3e33 45%,
+    transparent 72%
+  );
+  animation-delay: -6s;
+}
+.title {
+  position: absolute;
+  left: 5vw;
+  bottom: 6vh;
+  display: grid;
+  gap: 10px;
+  color: #fff;
+  font:
+    800 clamp(14px, 1vw, 20px)/1 system-ui,
+    sans-serif;
+  letter-spacing: 0.18em;
+  text-shadow: 0 2px 30px #000;
+}
+.title span {
+  color: #c7ff5e;
+  font-size: clamp(20px, 2vw, 36px);
+}
+.title b {
+  color: #c7cad3;
+  font-size: clamp(10px, 0.7vw, 14px);
+}
+iframe {
+  position: fixed;
+  width: 560px;
+  height: 720px;
+  border: 0;
+  pointer-events: none;
+}
+iframe.br {
+  right: 30px;
+  bottom: 30px;
+}
+iframe.bl {
+  left: 30px;
+  bottom: 30px;
+}
+iframe.tr {
+  right: 30px;
+  top: 30px;
+}
+iframe.tl {
+  left: 30px;
+  top: 30px;
+}
+@keyframes drift {
+  to {
+    background-position:
+      0 64px,
+      64px 0;
+  }
+}
+@keyframes float {
+  to {
+    transform: translate3d(2vw, -2vh, 0) scale(1.08);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

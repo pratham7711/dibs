@@ -27,6 +27,7 @@ export interface TwitchNotification {
   timestamp: number;
   type: string;
   event: Record<string, any>;
+  practice?: boolean;
 }
 
 export function parseEventSubTimestamp(timestamp: string): number {

@@ -65,6 +65,12 @@ function makeSpot(index, claim, previous, promotedViewerId) {
     moved.textContent = "↗ MOVED UP";
     nameLine.append(moved);
   }
+  if (claim?.practice) {
+    const practice = document.createElement("small");
+    practice.className = "practice-row-chip";
+    practice.textContent = "PRACTICE";
+    nameLine.append(practice);
+  }
   row.append(nameLine);
 
   if (claim) {

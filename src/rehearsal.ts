@@ -3,6 +3,56 @@ import type { TwitchNotification } from "./twitch/eventsub.js";
 
 export interface RehearsalOptions {
   sleep?: (milliseconds: number) => Promise<void>;
+  now?: () => number;
+}
+
+export async function runPracticeCrowd(
+  runtime: DibsRuntime,
+  options: RehearsalOptions = {},
+): Promise<void> {
+  const sleep =
+    options.sleep ??
+    ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const now = options.now ?? Date.now;
+  let elapsed = 0;
+  for (const message of crowd) {
+    const pause = message.atMs - elapsed;
+    if (pause > 0) await sleep(pause);
+    elapsed = message.atMs;
+    const source = message.duplicateOf
+      ? crowd.find((candidate) => candidate.id === message.duplicateOf)!
+      : message;
+    const notification: TwitchNotification = message.points
+      ? {
+          messageId: `practice-${message.id}`,
+          timestamp: now(),
+          type: "channel.channel_points_custom_reward_redemption.add",
+          practice: true,
+          event: {
+            user_id: `practice-${message.viewer}`,
+            user_login: message.viewer.toLowerCase(),
+            user_name: message.viewer,
+            reward: { title: "Practice points entry" },
+          },
+        }
+      : {
+          messageId: `practice-${source.id}`,
+          timestamp: now(),
+          type: "channel.chat.message",
+          practice: true,
+          event: {
+            chatter_user_id: `practice-${message.viewer}`,
+            chatter_user_login: message.viewer.toLowerCase(),
+            chatter_user_name: message.viewer,
+            color: rehearsalColor(message.viewer),
+            badges: message.subscriber
+              ? [{ set_id: "subscriber", id: "1", info: "" }]
+              : [],
+            message: { text: message.text },
+          },
+        };
+    await runtime.handleNotification(notification);
+  }
 }
 
 interface ScriptMessage {

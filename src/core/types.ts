@@ -22,6 +22,7 @@ export interface Claim {
   source: ClaimSource;
   resolverSource?: ResolverSource;
   chatColor?: string;
+  practice?: boolean;
   confidence: number;
   reason: string;
 }
@@ -34,6 +35,7 @@ export type DropEvent =
       viewerId: string;
       messageId?: string;
       reason?: string;
+      practice?: boolean;
     }
   | {
       type: "ClaimApproved";

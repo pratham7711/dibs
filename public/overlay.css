@@ -247,6 +247,17 @@ h1 {
   letter-spacing: 0.07em;
   animation: move-up 0.55s ease-out;
 }
+.practice-row-chip {
+  flex: none;
+  padding: 3px 5px;
+  border: 1px solid rgba(113, 231, 225, 0.34);
+  border-radius: 4px;
+  color: #71e7e1;
+  background: rgba(113, 231, 225, 0.08);
+  font-size: 7px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
 .source-chip {
   padding: 5px 7px;
   border-radius: 6px;
