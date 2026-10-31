@@ -13,7 +13,7 @@ export interface ChatReplyDecision {
 }
 
 export interface ChatReplyText {
-  message: string;
+  message: string | (() => string);
   parentMessageId?: string;
 }
 
@@ -60,29 +60,21 @@ export class TwitchChatReplies {
   }
 
   enqueue(decision: ChatReplyDecision): void {
-    this.statusQueue = undefined;
     this.queued.push(decision);
     if (!this.timer && !this.sending) this.scheduleFlush();
   }
 
   enqueueDirect(reply: ChatReplyText): void {
-    this.statusQueue = undefined;
     this.directQueue.push(reply);
     if (!this.timer && !this.sending) this.scheduleFlush();
   }
 
-  enqueueAnnouncement(message: string): void {
+  enqueueAnnouncement(message: ChatReplyText["message"]): void {
     this.enqueueDirect({ message });
   }
 
   enqueueStatus(reply: ChatReplyText): boolean {
-    if (
-      this.queued.length > 0 ||
-      this.directQueue.length > 0 ||
-      this.statusQueue ||
-      this.sending
-    )
-      return false;
+    if (this.statusQueue) return false;
     this.statusQueue = reply;
     if (!this.timer) this.scheduleFlush();
     return true;
@@ -92,31 +84,33 @@ export class TwitchChatReplies {
     if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;
     if (this.sending) return;
-    const batch = this.queued.splice(0);
-    const direct = batch.length === 0 ? this.directQueue.shift() : undefined;
-    const status =
-      batch.length === 0 && !direct ? this.takeStatus() : undefined;
+    const direct = this.directQueue.shift();
+    const status = direct ? undefined : this.takeStatus();
+    const batch = direct || status ? [] : this.queued.splice(0);
     if (batch.length === 0 && !direct && !status) return;
 
     this.sending = true;
     try {
       const waitMs = this.minimumIntervalMs - (Date.now() - this.lastSentAt);
       if (this.lastSentAt && waitMs > 0) await this.sleep(waitMs);
-      if (status && (this.queued.length > 0 || this.directQueue.length > 0)) {
-        // Status is low priority; discard it if a decision reply arrived while waiting.
+      if (
+        batch.length > 0 &&
+        (this.directQueue.length > 0 || this.statusQueue)
+      ) {
+        this.queued.unshift(...batch);
         this.sending = false;
-        this.scheduleFlush();
+        if (!this.timer) this.scheduleFlush();
         return;
       }
-      if (direct && this.queued.length > 0) {
-        this.directQueue.unshift(direct);
+      if (status && this.directQueue.length > 0) {
+        this.statusQueue = status;
         this.sending = false;
-        this.scheduleFlush();
+        if (!this.timer) this.scheduleFlush();
         return;
       }
       const message = batch.length
         ? summarizeBatch(batch)
-        : (direct ?? status)!.message;
+        : resolveMessage((direct ?? status)!.message);
       if (!message) return;
       const parentMessageId =
         batch.find((item) => !item.practice)?.parentMessageId ??
@@ -220,7 +214,7 @@ function chatRequest(
 
 export function summarizeBatch(batch: ChatReplyDecision[]): string {
   if (batch.length === 1) {
-    return batch[0]!.practice ? "+1 practice" : summarizeOne(batch[0]!);
+    return batch[0]!.practice ? "" : summarizeOne(batch[0]!);
   }
 
   const practiceCount = new Set(
@@ -229,7 +223,7 @@ export function summarizeBatch(batch: ChatReplyDecision[]): string {
       .map((item) => item.login ?? item.display),
   ).size;
   const real = batch.filter((item) => !item.practice);
-  if (!real.length) return practiceCount ? `+${practiceCount} practice` : "";
+  if (!real.length) return "";
   const winners = real.filter(
     (item) => item.action === "granted" || item.action === "promoted",
   );
@@ -250,6 +244,10 @@ export function summarizeBatch(batch: ChatReplyDecision[]): string {
   return capUnits(
     units.map((unit, index) => (index === 0 ? unit.replace(/^ · /, "") : unit)),
   );
+}
+
+function resolveMessage(message: ChatReplyText["message"]): string {
+  return typeof message === "function" ? message() : message;
 }
 
 function summarizeOne(item: ChatReplyDecision): string {

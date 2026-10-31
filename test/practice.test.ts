@@ -43,7 +43,7 @@ describe("practice crowd safeguards", () => {
           practice: true,
         },
       ]),
-    ).toBe("+1 practice");
+    ).toBe("");
   });
 
   it("counts practice claims in status and sold-out lines without naming them", () => {
@@ -138,6 +138,17 @@ describe("practice crowd safeguards", () => {
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+
+  it("uses compact overlay rows above five spots", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const overlayScript = await readFile("public/overlay.js", "utf8");
+    const overlayStyles = await readFile("public/overlay.css", "utf8");
+    expect(overlayScript).toContain('classList.toggle("dense", spotTotal > 5)');
+    expect(overlayStyles).toMatch(/\.spot-rows\.dense\s*\{[^}]*gap:\s*3px/s);
+    expect(overlayStyles).toMatch(
+      /\.spot-rows\.dense \.spot-row\s*\{[^}]*min-height:\s*31px/s,
+    );
   });
 
   it("locks the practice start endpoint while a crowd is running", async () => {

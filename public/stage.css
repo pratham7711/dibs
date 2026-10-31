@@ -102,28 +102,13 @@ body {
 }
 iframe {
   position: fixed;
-  width: 560px;
-  height: 720px;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
   border: 0;
   pointer-events: none;
   background: transparent !important;
   color-scheme: dark;
-}
-iframe.br {
-  right: 30px;
-  bottom: 30px;
-}
-iframe.bl {
-  left: 30px;
-  bottom: 30px;
-}
-iframe.tr {
-  right: 30px;
-  top: 30px;
-}
-iframe.tl {
-  left: 30px;
-  top: 30px;
 }
 @keyframes drift {
   to {

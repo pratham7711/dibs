@@ -195,6 +195,29 @@ h1 {
   display: grid;
   gap: 7px;
 }
+.spot-rows.dense {
+  gap: 3px;
+}
+.spot-rows.dense .spot-row {
+  min-height: 31px;
+  gap: 7px;
+  padding: 3px 8px;
+  border-radius: 8px;
+}
+.spot-rows.dense .spot-number {
+  width: 21px;
+  height: 21px;
+  border-radius: 6px;
+  font-size: 9px;
+}
+.spot-rows.dense .viewer {
+  font-size: 11px;
+}
+.spot-rows.dense .source-chip,
+.spot-rows.dense .gap-chip {
+  padding: 3px 5px;
+  font-size: 8px;
+}
 .spot-row {
   min-height: 54px;
   display: grid;

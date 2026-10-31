@@ -149,6 +149,59 @@ describe("Twitch chat replies", () => {
     chat.close();
   });
 
+  it("does not send a chat line for a practice-only decision batch", async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    const chat = new TwitchChatReplies({
+      clientId: "client",
+      broadcasterId: "broadcaster",
+      senderId: "bot",
+      getAccessToken: async () => "token",
+      fetch: fetcher,
+      batchWindowMs: 1000,
+      minimumIntervalMs: 0,
+    });
+    chat.enqueue({
+      action: "granted",
+      display: "PracticeOak",
+      parentMessageId: "practice-message",
+      practice: true,
+    });
+    await chat.flush();
+    expect(fetcher).not.toHaveBeenCalled();
+    chat.close();
+  });
+
+  it("sends a real viewer spot answer before an already queued summary", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ data: [] }));
+    const chat = new TwitchChatReplies({
+      clientId: "client",
+      broadcasterId: "broadcaster",
+      senderId: "bot",
+      getAccessToken: async () => "token",
+      fetch: fetcher,
+      batchWindowMs: 1000,
+      minimumIntervalMs: 0,
+    });
+    chat.enqueue({
+      action: "granted",
+      display: "Oak",
+      parentMessageId: "claim-oak",
+      spotNumber: 2,
+      spotsTotal: 5,
+    });
+    chat.enqueueDirect({
+      message: "you're #2 of 5",
+      parentMessageId: "spot-question",
+    });
+    await chat.flush();
+    const first = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
+    expect(first.message).toBe("you're #2 of 5");
+    expect(first.reply_parent_message_id).toBe("spot-question");
+    chat.close();
+  });
+
   it("formats named winners and waitlist entries", () => {
     expect(
       summarizeBatch([
@@ -266,7 +319,7 @@ describe("Twitch chat replies", () => {
     chat.close();
   });
 
-  it("drops a pending public status line when a claim reply backs up", async () => {
+  it("sends a real viewer status answer before a queued claim summary", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValue(jsonResponse({ data: [] }));
@@ -287,8 +340,7 @@ describe("Twitch chat replies", () => {
     });
     await chat.flush();
     const request = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
-    expect(request.message).toBe("✅ you're in!");
-    expect(request.message).not.toContain("2 of 5 left");
+    expect(request.message).toBe("2 of 5 left, say dibs");
     chat.close();
   });
 });

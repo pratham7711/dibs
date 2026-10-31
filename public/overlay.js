@@ -128,6 +128,7 @@ function render(view) {
     (a, b) => a.twitchTimestamp - b.twitchTimestamp,
   );
   const spotTotal = drop?.spots ?? 0;
+  elements.rows.classList.toggle("dense", spotTotal > 5);
   const latestPromotion = [...(state.decisionLog ?? [])]
     .reverse()
     .find((decision) => decision.action === "promoted");

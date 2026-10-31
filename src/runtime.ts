@@ -601,12 +601,12 @@ export class DibsRuntime {
     if (!wasSoldOut && isSoldOut(this.state) && !this.soldOutAnnounced) {
       this.soldOutAnnounced = true;
       this.soldOutAt = event.at;
-      this.chat?.enqueueAnnouncement(
+      this.chat?.enqueueAnnouncement(() =>
         publicStatusLine(
           this.state,
           this.firstClaimAt,
           this.soldOutAt,
-          event.at,
+          this.now(),
         ),
       );
     }

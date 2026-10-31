@@ -197,8 +197,12 @@ describe("chat query handling", () => {
       "2 of 5 left, say dibs",
     );
     const soldOut = makeState();
+    soldOut.waitlist.push(
+      { ...winner("practice-waiter-a", "PracticeA", 1800), practice: true },
+      { ...winner("practice-waiter-b", "PracticeB", 1900), practice: true },
+    );
     expect(publicStatusLine(soldOut, 1000, 4400, 5000)).toBe(
-      "SOLD OUT in 3.4 s: @EarlyBird @Oak @Tix @Robin @Fern · 1 on the waitlist",
+      "SOLD OUT in 3.4 s: @EarlyBird @Oak @Tix @Robin @Fern · 3 on the waitlist · +2 practice",
     );
   });
 });
