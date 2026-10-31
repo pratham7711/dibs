@@ -217,9 +217,19 @@ export function summarizeBatch(batch: ChatReplyDecision[]): string {
     return batch[0]!.practice ? "" : summarizeOne(batch[0]!);
   }
 
+  const cancelledPractice = new Set(
+    batch
+      .filter((item) => item.practice && item.action === "cancelled")
+      .map((item) => item.login ?? item.display),
+  );
   const practiceCount = new Set(
     batch
-      .filter((item) => item.practice)
+      .filter(
+        (item) =>
+          item.practice &&
+          (item.action === "granted" || item.action === "promoted") &&
+          !cancelledPractice.has(item.login ?? item.display),
+      )
       .map((item) => item.login ?? item.display),
   ).size;
   const real = batch.filter((item) => !item.practice);
@@ -234,13 +244,17 @@ export function summarizeBatch(batch: ChatReplyDecision[]): string {
     const position = item.spotNumber ?? index + 1;
     units.push(`${index === 0 ? "✅ " : " · "}#${position} @${item.display}`);
   });
+  if (practiceCount) {
+    const practiceWinners = `+${practiceCount} practice winner${practiceCount === 1 ? "" : "s"}`;
+    if (winners.length) units[units.length - 1] += ` ${practiceWinners}`;
+    else units.push(practiceWinners);
+  }
   waitlist.forEach((item, index) => {
     units.push(`${index === 0 ? " · ⏳ waitlist: " : ", "}@${item.display}`);
   });
   cancelled.forEach((item, index) => {
     units.push(`${index === 0 ? " · ↩ cancelled: " : ", "}@${item.display}`);
   });
-  if (practiceCount) units.push(` · +${practiceCount} practice`);
   return capUnits(
     units.map((unit, index) => (index === 0 ? unit.replace(/^ · /, "") : unit)),
   );

@@ -77,11 +77,11 @@ export function publicStatusLine(
     return "No drop is open right now.";
   const claimed = state.winners.reduce((total, claim) => total + claim.qty, 0);
   const practiceCount = new Set(
-    [...state.winners, ...state.waitlist, ...state.reviewQueue]
+    state.winners
       .filter((claim) => claim.practice)
       .map((claim) => claim.viewerId),
   ).size;
-  const practiceSuffix = practiceCount ? ` · +${practiceCount} practice` : "";
+  const practiceSuffix = practiceWinnerSuffix(practiceCount);
   const left = Math.max(0, drop.spots - claimed);
   const waiters = ordered(state.waitlist);
   if (left === 0) {
@@ -94,7 +94,7 @@ export function publicStatusLine(
       .map(displayName)
       .join(" ");
     return capStatusLine(
-      `SOLD OUT${soldOutSeconds}: ${names || "all spots claimed"} · ${waiters.length} on the waitlist${practiceSuffix}`,
+      `SOLD OUT${soldOutSeconds}: ${names || "all spots claimed"}${practiceSuffix} · ${waiters.length} on the waitlist`,
     );
   }
   if (drop.status === "closed")
@@ -102,9 +102,22 @@ export function publicStatusLine(
   const names = ordered(state.winners)
     .filter((claim) => !claim.practice)
     .map(displayName);
+  const winnerSummary = names.length
+    ? `${names.join(", ")}${practiceCount ? ` + ${practiceWinnerLabel(practiceCount)}` : ""}`
+    : practiceCount
+      ? practiceWinnerLabel(practiceCount)
+      : "";
   return capStatusLine(
-    `${left} of ${drop.spots} left, say dibs${names.length ? ` · in: ${names.join(", ")}` : ""}${practiceSuffix}`,
+    `${left} of ${drop.spots} left, say dibs${winnerSummary ? ` · in: ${winnerSummary}` : ""}`,
   );
+}
+
+function practiceWinnerSuffix(count: number): string {
+  return count ? ` + ${practiceWinnerLabel(count)}` : "";
+}
+
+function practiceWinnerLabel(count: number): string {
+  return `${count} practice winner${count === 1 ? "" : "s"}`;
 }
 
 function ordered(claims: Claim[]): Claim[] {

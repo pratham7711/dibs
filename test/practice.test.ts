@@ -32,7 +32,7 @@ describe("practice crowd safeguards", () => {
       },
     ]);
     expect(line).toContain("@RealViewer");
-    expect(line).toContain("+2 practice");
+    expect(line).toContain("+1 practice winner");
     expect(line).not.toContain("Fictional");
     expect(
       summarizeBatch([
@@ -65,7 +65,7 @@ describe("practice crowd safeguards", () => {
       reason: "Practice",
     });
     const status = publicStatusLine(state, 1, 2, 2);
-    expect(status).toContain("+1 practice");
+    expect(status).toContain("+ 1 practice winner");
     expect(status).not.toContain("FictionalOak");
     expect(status).toContain("SOLD OUT");
   });

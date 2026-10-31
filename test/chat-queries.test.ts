@@ -197,12 +197,24 @@ describe("chat query handling", () => {
       "2 of 5 left, say dibs",
     );
     const soldOut = makeState();
+    soldOut.winners[0] = { ...soldOut.winners[0]!, practice: true };
     soldOut.waitlist.push(
       { ...winner("practice-waiter-a", "PracticeA", 1800), practice: true },
       { ...winner("practice-waiter-b", "PracticeB", 1900), practice: true },
     );
+    soldOut.reviewQueue[0] = { ...soldOut.reviewQueue[0]!, practice: true };
     expect(publicStatusLine(soldOut, 1000, 4400, 5000)).toBe(
-      "SOLD OUT in 3.4 s: @EarlyBird @Oak @Tix @Robin @Fern · 3 on the waitlist · +2 practice",
+      "SOLD OUT in 3.4 s: @Oak @Tix @Robin @Fern + 1 practice winner · 3 on the waitlist",
+    );
+
+    const open = makeState();
+    open.winners = [
+      open.winners[0]!,
+      { ...open.winners[1]!, practice: true },
+      open.winners[2]!,
+    ];
+    expect(publicStatusLine(open, 1000, undefined, 2000)).toBe(
+      "2 of 5 left, say dibs · in: @EarlyBird, @Tix + 1 practice winner",
     );
   });
 });
