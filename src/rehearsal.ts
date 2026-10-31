@@ -14,6 +14,7 @@ export async function runPracticeCrowd(
     options.sleep ??
     ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   const now = options.now ?? Date.now;
+  const runId = crypto.randomUUID();
   let elapsed = 0;
   for (const message of crowd) {
     const pause = message.atMs - elapsed;
@@ -24,11 +25,12 @@ export async function runPracticeCrowd(
       : message;
     const notification: TwitchNotification = message.points
       ? {
-          messageId: `practice-${message.id}`,
+          messageId: `practice-envelope-${runId}-${message.id}`,
           timestamp: now(),
           type: "channel.channel_points_custom_reward_redemption.add",
           practice: true,
           event: {
+            id: `practice-${runId}-${message.id}`,
             user_id: `practice-${message.viewer}`,
             user_login: message.viewer.toLowerCase(),
             user_name: message.viewer,
@@ -36,11 +38,12 @@ export async function runPracticeCrowd(
           },
         }
       : {
-          messageId: `practice-${source.id}`,
+          messageId: `practice-envelope-${runId}-${source.id}`,
           timestamp: now(),
           type: "channel.chat.message",
           practice: true,
           event: {
+            message_id: `practice-${runId}-${source.id}`,
             chatter_user_id: `practice-${message.viewer}`,
             chatter_user_login: message.viewer.toLowerCase(),
             chatter_user_name: message.viewer,
@@ -312,6 +315,7 @@ export async function runRehearsal(
   });
 
   const baseTimestamp = Date.now();
+  const runId = crypto.randomUUID();
   let elapsed = 0;
   let approved = false;
   for (const message of crowd) {
@@ -330,10 +334,11 @@ export async function runRehearsal(
       : message;
     const notification: TwitchNotification = message.points
       ? {
-          messageId: message.id,
+          messageId: `rehearsal-envelope-${runId}-${source.id}`,
           timestamp: baseTimestamp + message.timestampOffsetMs,
           type: "channel.channel_points_custom_reward_redemption.add",
           event: {
+            message_id: message.id,
             user_id: `rehearsal-${message.viewer}`,
             user_login: message.viewer.toLowerCase(),
             user_name: message.viewer,
@@ -341,10 +346,11 @@ export async function runRehearsal(
           },
         }
       : {
-          messageId: source.id,
+          messageId: `rehearsal-envelope-${runId}-${source.id}`,
           timestamp: baseTimestamp + message.timestampOffsetMs,
           type: "channel.chat.message",
           event: {
+            message_id: source.id,
             chatter_user_id: `rehearsal-${message.viewer}`,
             chatter_user_login: message.viewer.toLowerCase(),
             chatter_user_name: message.viewer,

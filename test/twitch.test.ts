@@ -11,6 +11,7 @@ import {
   parseEventSubTimestamp,
   TwitchEventSub,
 } from "../src/twitch/eventsub.js";
+import type { SocketLike } from "../src/twitch/eventsub.js";
 import { DibsRuntime } from "../src/runtime.js";
 import type { TwitchNotification } from "../src/twitch/eventsub.js";
 
@@ -55,10 +56,11 @@ function chatNotification(
   timestamp: number,
 ): TwitchNotification {
   return {
-    messageId: id,
+    messageId: `envelope-${id}`,
     timestamp,
     type: "channel.chat.message",
     event: {
+      message_id: `chat-${id}`,
       chatter_user_id: `viewer-${viewer}`,
       chatter_user_login: `viewer${viewer}`,
       chatter_user_name: `Viewer${viewer}`,
@@ -224,6 +226,36 @@ describe("Twitch chat replies", () => {
     chat.close();
   });
 
+  it("retries a rejected threaded reply once without its parent id", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ message: "invalid parent" }, 400))
+      .mockResolvedValueOnce(jsonResponse({ data: [] }));
+    const chat = new TwitchChatReplies({
+      clientId: "client",
+      broadcasterId: "broadcaster",
+      senderId: "bot",
+      getAccessToken: async () => "token",
+      fetch: fetcher,
+      minimumIntervalMs: 0,
+      batchWindowMs: 0,
+    });
+    chat.enqueueDirect({
+      message: "your spot",
+      parentMessageId: "chat-message-1",
+    });
+    await chat.flush();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toHaveProperty(
+      "reply_parent_message_id",
+      "chat-message-1",
+    );
+    expect(
+      JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body)),
+    ).not.toHaveProperty("reply_parent_message_id");
+    chat.close();
+  });
+
   it("drops a pending public status line when a claim reply backs up", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
@@ -325,6 +357,67 @@ describe("Twitch EventSub WebSocket", () => {
     expect(subscribed).toHaveLength(2);
     client.close();
   });
+
+  it("allows a 10.01 second keepalive but reconnects after prolonged silence", async () => {
+    vi.useFakeTimers();
+    try {
+      const sockets: Array<{
+        emit: (event: string, data: Buffer) => void;
+      }> = [];
+      const client = new TwitchEventSub({
+        clientId: "client",
+        broadcasterId: "broadcaster",
+        botUserId: "bot",
+        getAccessToken: async () => "token",
+        onNotification: () => undefined,
+        fetch: vi.fn(async () => jsonResponse({ data: [] }, 202)),
+        socketFactory: () => {
+          const listeners: Record<string, (data: Buffer) => void> = {};
+          const socket = {
+            on(event: string, listener: (data: Buffer) => void) {
+              listeners[event] = listener;
+              return socket;
+            },
+            close: vi.fn(),
+            emit(event: string, data: Buffer) {
+              listeners[event]?.(data);
+            },
+          };
+          sockets.push(socket);
+          return socket as unknown as SocketLike;
+        },
+        reconnectDelayMs: 1000,
+      });
+      client.start();
+      const send = (type: string, payload: unknown) =>
+        sockets.at(-1)!.emit(
+          "message",
+          Buffer.from(
+            envelope(type, payload, {
+              message_timestamp: new Date().toISOString(),
+            }),
+          ),
+        );
+      send("session_welcome", {
+        session: { id: "session", keepalive_timeout_seconds: 10 },
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(10_010);
+      send("session_keepalive", {});
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(10_010);
+      expect(sockets).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(sockets).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(sockets).toHaveLength(2);
+      client.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("Dibs runtime", () => {
@@ -380,23 +473,77 @@ describe("Dibs runtime", () => {
       "viewer-2",
       "viewer-3",
     ]);
+    expect(runtime.snapshot.winners.map((claim) => claim.messageId)).toContain(
+      "chat-message-1",
+    );
     expect(runtime.snapshot.waitlist.map((claim) => claim.viewerId)).toEqual([
       "viewer-4",
       "viewer-5",
       "viewer-6",
     ]);
-    expect(
-      runtime.snapshot.decisionLog.filter(
-        (decision) => decision.action === "duplicate_ignored",
-      ),
-    ).toHaveLength(1);
+    expect(runtime.snapshot.seenMessageIds).toHaveLength(6);
 
-    runtime.cancelClaim("message-2");
+    expect(fakeChat.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({ parentMessageId: "chat-message-6" }),
+    );
+    runtime.cancelClaim("chat-message-2");
     expect(runtime.snapshot.winners.map((claim) => claim.viewerId)).toEqual([
       "viewer-1",
       "viewer-3",
       "viewer-4",
     ]);
     expect(states.length).toBeGreaterThan(1);
+  });
+
+  it("ignores its own prefixed chat replies but accepts a hand-typed claim", async () => {
+    const auth = {
+      getAccessToken: async () => "token",
+    } as unknown as TwitchAuth;
+    const fakeChat = {
+      enqueue: vi.fn(),
+      enqueueAnnouncement: vi.fn(),
+      enqueueDirect: vi.fn(),
+      enqueueStatus: vi.fn(() => true),
+      close: vi.fn(),
+    };
+    const runtime = new DibsRuntime({
+      auth,
+      env: { TWITCH_CLIENT_ID: "client", TWITCH_CHANNEL: "streamer" },
+      fetch: vi.fn(async () =>
+        jsonResponse({ data: [{ id: "bot" }] }),
+      ) as typeof fetch,
+      eventSubFactory: () =>
+        ({ start: vi.fn(), close: vi.fn() }) as unknown as TwitchEventSub,
+      chatFactory: () => fakeChat as unknown as TwitchChatReplies,
+    });
+    runtimes.push(runtime);
+    await runtime.start();
+    runtime.openDrop({ title: "Echo check", spots: 2 });
+    await runtime.handleNotification({
+      messageId: "envelope-echo",
+      timestamp: Date.now(),
+      type: "channel.chat.message",
+      event: {
+        message_id: "chat-echo",
+        chatter_user_id: "bot",
+        chatter_user_name: "DibsBot",
+        message: { text: "✅ #1 @prathamsharma — you're #1 of 2!" },
+      },
+    });
+    expect(runtime.snapshot.winners).toHaveLength(0);
+    await runtime.handleNotification({
+      messageId: "envelope-manual",
+      timestamp: Date.now(),
+      type: "channel.chat.message",
+      event: {
+        message_id: "chat-manual",
+        chatter_user_id: "bot",
+        chatter_user_name: "Pratham",
+        message: { text: "dibs" },
+      },
+    });
+    expect(runtime.snapshot.winners.map((claim) => claim.messageId)).toEqual([
+      "chat-manual",
+    ]);
   });
 });

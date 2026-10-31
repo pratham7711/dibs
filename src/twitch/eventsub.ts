@@ -23,6 +23,7 @@ export interface EventSubEnvelope {
 }
 
 export interface TwitchNotification {
+  /** EventSub envelope id, used to discard delivery redeliveries. */
   messageId: string;
   timestamp: number;
   type: string;
@@ -74,6 +75,7 @@ export class TwitchEventSub {
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private closed = false;
   private reconnectDelayMs: number;
+  private readonly keepaliveGraceMs = 2000;
 
   constructor(private readonly options: EventSubOptions) {
     this.fetcher = options.fetch ?? fetch;
@@ -180,7 +182,7 @@ export class TwitchEventSub {
     if (this.keepaliveTimeoutSeconds === undefined) return;
     this.keepaliveTimer = setTimeout(
       () => this.scheduleReconnect(),
-      this.keepaliveTimeoutSeconds * 1000,
+      this.keepaliveTimeoutSeconds * 1000 + this.keepaliveGraceMs,
     );
   }
 

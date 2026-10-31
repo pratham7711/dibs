@@ -83,6 +83,8 @@ export class DibsRuntime {
   private readonly feed: ActivityItem[] = [];
   private mode: "live" | "rehearsal";
   private twitchConnected = false;
+  private botUserId: string | undefined;
+  private readonly seenEventSubIds = new Set<string>();
   private practiceRunning = false;
   private readonly now: () => number;
   private tokenValidationTimer: ReturnType<typeof setInterval> | undefined;
@@ -149,6 +151,7 @@ export class DibsRuntime {
       this.getUserByLogin(channelLogin, token, clientId),
       this.getCurrentUser(token, clientId),
     ]);
+    this.botUserId = bot.id;
     const tokenProvider = () => this.auth.getAccessToken();
     this.chat = (
       this.options.chatFactory ?? ((config) => new TwitchChatReplies(config))
@@ -255,17 +258,29 @@ export class DibsRuntime {
   }
 
   async handleNotification(notification: TwitchNotification): Promise<void> {
+    if (this.seenEventSubIds.has(notification.messageId)) return;
+    this.seenEventSubIds.add(notification.messageId);
+    if (this.seenEventSubIds.size > 10_000) {
+      const oldest = this.seenEventSubIds.values().next().value;
+      if (oldest) this.seenEventSubIds.delete(oldest);
+    }
     const { event } = notification;
     if (notification.type === "channel.chat.message") {
       const text = String(event.message?.text ?? "");
+      if (
+        String(event.chatter_user_id ?? "") === this.botUserId &&
+        isDibsReply(text)
+      )
+        return;
       const viewerId = String(event.chatter_user_id ?? "");
+      const chatMessageId = String(event.message_id ?? notification.messageId);
       const query = classifyChatQuery(text);
       if (query && viewerId) {
         this.handleChatQuery(
           query,
           text,
           viewerId,
-          notification.messageId,
+          chatMessageId,
           String(
             event.chatter_user_name ?? event.chatter_user_login ?? "Viewer",
           ),
@@ -299,8 +314,9 @@ export class DibsRuntime {
     }
     if (notification.type !== "channel.chat.message") return;
     const badges = Array.isArray(event.badges) ? event.badges : [];
+    const chatMessageId = String(event.message_id ?? notification.messageId);
     await this.processClaim({
-      id: notification.messageId,
+      id: chatMessageId,
       text: String(event.message?.text ?? ""),
       viewerId: String(event.chatter_user_id),
       login: String(
@@ -703,6 +719,12 @@ function isSoldOut(state: Allocation): boolean {
     state.drop &&
     state.winners.reduce((total, claim) => total + claim.qty, 0) >=
       state.drop.spots,
+  );
+}
+
+function isDibsReply(text: string): boolean {
+  return /^(?:✅|⏳|⬆|↩|\+\d+ practice|SOLD OUT|DROP CLOSED|No drop|\d+ of \d+ left|you're #|waitlist #|in review,|no claim yet)/i.test(
+    text.trim(),
   );
 }
 

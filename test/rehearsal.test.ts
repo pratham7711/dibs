@@ -53,10 +53,8 @@ describe("rehearsal crowd", () => {
       runtime.snapshot.decisionLog.every((item) => item.why.length <= 90),
     ).toBe(true);
     expect(
-      runtime.snapshot.decisionLog.some(
-        (item) => item.action === "duplicate_ignored",
-      ),
-    ).toBe(true);
+      runtime.view.feed.filter((item) => item.viewerId === "rehearsal-Robin"),
+    ).toHaveLength(1);
     expect(
       runtime.snapshot.decisionLog.filter((item) => item.action === "promoted"),
     ).toHaveLength(2);

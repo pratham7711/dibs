@@ -164,7 +164,7 @@ export class TwitchChatReplies {
       return;
     }
     const token = await this.options.getAccessToken();
-    const response = await this.fetcher(`${this.helixUrl}/chat/messages`, {
+    let response = await this.fetcher(`${this.helixUrl}/chat/messages`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -173,6 +173,17 @@ export class TwitchChatReplies {
       },
       body: JSON.stringify(chatRequest(this.options, message, parentMessageId)),
     });
+    if (response.status === 400 && parentMessageId) {
+      response = await this.fetcher(`${this.helixUrl}/chat/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${await this.options.getAccessToken()}`,
+          "Client-Id": this.options.clientId,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(chatRequest(this.options, message)),
+      });
+    }
     if (response.status === 429) {
       const retryAfter = Number(response.headers.get("Retry-After") ?? 1);
       await this.sleep(Math.max(1, retryAfter) * 1000);
