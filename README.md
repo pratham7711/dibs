@@ -58,3 +58,9 @@ npx tsc --noEmit
 - **Step 8:** Grapheme-safe dashboard avatars, a standalone neon OBS stage, and a live practice crowd that competes in the allocator without exposing fictional names in Twitch chat.
 - **Step 9:** Transparent overlay iframe on `/stage`, keeping the arena visible behind the race card.
 - **Step 10:** Public room redirects preserve existing query parameters, including stage overlay position.
+- **Step 11 (753f958):** Live-channel fixes: keepalive grace for Twitch's 9.99–10.01 s keepalive cadence, replies threaded to chat message ids with a no-parent retry on HTTP 400, and bot self-reply filtering.
+- **Step 12 (b22ff19):** Threaded replies omit Twitch's automatic duplicate `@mention`, and bot echoes stay out of the feed.
+- **Step 13 (36dba49):** Suppressed practice-only chat lines, prioritized real answers over queued summaries, fit the overlay card for 1–20 spots, and aligned SOLD OUT waitlist counts with the overlay.
+- **Step 14 (a0d348e):** Chat counts only practice winners and places that count beside the winners.
+
+Steps 11–14 came from streaming to a real Twitch channel with OBS and checking what chat and the overlay showed.
