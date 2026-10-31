@@ -221,8 +221,18 @@ describe("Twitch chat replies", () => {
     });
     await chat.flush();
     const request = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
-    expect(request.message).toBe("✅ @Oak — you're #2 of 5!");
+    expect(request.message).toBe("✅ you're #2 of 5!");
     expect(request.reply_parent_message_id).toBe("claim-oak");
+    expect(
+      summarizeBatch([
+        {
+          action: "waitlisted",
+          display: "Oak",
+          parentMessageId: "claim-oak",
+          waitlistNumber: 2,
+        },
+      ]),
+    ).toBe("⏳ waitlist #2.");
     chat.close();
   });
 
@@ -277,7 +287,7 @@ describe("Twitch chat replies", () => {
     });
     await chat.flush();
     const request = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
-    expect(request.message).toContain("@Oak");
+    expect(request.message).toBe("✅ you're in!");
     expect(request.message).not.toContain("2 of 5 left");
     chat.close();
   });
@@ -527,7 +537,11 @@ describe("Dibs runtime", () => {
         message_id: "chat-echo",
         chatter_user_id: "bot",
         chatter_user_name: "DibsBot",
-        message: { text: "✅ #1 @prathamsharma — you're #1 of 2!" },
+        chatter_user_login: "prathamsharma",
+        reply: { parent_message_id: "chat-original" },
+        message: {
+          text: "@prathamsharma ✅ @prathamsharma — you're #1 of 2!",
+        },
       },
     });
     expect(runtime.snapshot.winners).toHaveLength(0);

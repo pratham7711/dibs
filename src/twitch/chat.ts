@@ -253,18 +253,17 @@ export function summarizeBatch(batch: ChatReplyDecision[]): string {
 }
 
 function summarizeOne(item: ChatReplyDecision): string {
-  const name = `@${item.display}`;
   if (item.action === "granted") {
     const rank = item.spotNumber
       ? `#${item.spotNumber} of ${item.spotsTotal ?? "?"}`
       : "in";
-    return capText(`✅ ${name} — you're ${rank}!`);
+    return capText(`✅ you're ${rank}!`);
   }
   if (item.action === "waitlisted")
-    return capText(`⏳ ${name} — waitlist #${item.waitlistNumber ?? "?"}.`);
+    return capText(`⏳ waitlist #${item.waitlistNumber ?? "?"}.`);
   if (item.action === "promoted")
-    return capText(`⬆ ${name} moved up into spot #${item.spotNumber ?? "?"}!`);
-  return capText(`↩ ${name}, your spot was cancelled.`);
+    return capText(`⬆ moved up into spot #${item.spotNumber ?? "?"}!`);
+  return capText("↩ your spot was cancelled.");
 }
 
 function capUnits(units: string[]): string {

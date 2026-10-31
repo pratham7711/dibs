@@ -267,11 +267,9 @@ export class DibsRuntime {
     const { event } = notification;
     if (notification.type === "channel.chat.message") {
       const text = String(event.message?.text ?? "");
-      if (
-        String(event.chatter_user_id ?? "") === this.botUserId &&
-        isDibsReply(text)
-      )
-        return;
+      if (String(event.chatter_user_id ?? "") === this.botUserId) {
+        if (event.reply || isDibsReply(stripLeadingMention(text))) return;
+      }
       const viewerId = String(event.chatter_user_id ?? "");
       const chatMessageId = String(event.message_id ?? notification.messageId);
       const query = classifyChatQuery(text);
@@ -726,6 +724,10 @@ function isDibsReply(text: string): boolean {
   return /^(?:✅|⏳|⬆|↩|\+\d+ practice|SOLD OUT|DROP CLOSED|No drop|\d+ of \d+ left|you're #|waitlist #|in review,|no claim yet)/i.test(
     text.trim(),
   );
+}
+
+function stripLeadingMention(text: string): string {
+  return text.trim().replace(/^@[^\s]+\s+/, "");
 }
 
 export interface HttpServerOptions {
